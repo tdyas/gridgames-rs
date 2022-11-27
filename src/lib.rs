@@ -1,14 +1,8 @@
-pub fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+//! gridgames-rs
+//!
+//! This crate contains various Sudoku solvers and generators. It is intended to support
+//! the `GridGames` iOS app.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#![allow(dead_code)]
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+mod dlx;
