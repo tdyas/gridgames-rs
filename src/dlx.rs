@@ -302,6 +302,44 @@ impl DLX {
     {
         self.search(&mut found_solution);
     }
+
+    /// Add the given row to the proposed solution. Covers all columns covered by the row.
+    pub fn add_row_to_solution(&mut self, row_index: usize) {
+        assert!(row_index < self.row_node_ranges.len());
+
+        let first_node_in_row = *self.row_node_ranges[row_index].start();
+        self.proposed_solution_row_nodes.push(first_node_in_row);
+
+        let mut node = first_node_in_row;
+        loop {
+            let col_node = self.column_node_for_node[node];
+            self.cover_column(col_node);
+
+            node = self.row_links[node].next;
+            if node == first_node_in_row {
+                break;
+            }
+        }
+    }
+
+    /// Remove all rows from the proposed solution that had been added by `add_row_to_solution`.
+    ///
+    /// Note: This must not be called from a `found_solution` closure passed to `solve` or else this
+    /// `DLX` instance will be corrupted.
+    pub fn clear_solution(&mut self) {
+        while let Some(row_node) = self.proposed_solution_row_nodes.pop() {
+            let mut node = row_node;
+            loop {
+                let col_node = self.column_node_for_node[node];
+                self.uncover_column(col_node);
+
+                node = self.row_links[node].previous;
+                if node == row_node {
+                    break;
+                }
+            }
+        }
+    }
 }
 
 // Neat trick from the Ferrous blog: Index `Vec` by a `Node` so that we do not have to violate its status as a newtype.
@@ -542,6 +580,14 @@ mod tests {
         );
     }
 
+    fn assert_solutions(dlx: &mut DLX, expected_solutions: Vec<Vec<usize>>) {
+        let mut actual_solutions = Vec::new();
+        dlx.solve(|solution| {
+            actual_solutions.push(solution);
+        });
+        assert_eq!(actual_solutions, expected_solutions);
+    }
+
     #[test]
     fn small_problem() {
         let mut dlx = DLX::new(3);
@@ -549,12 +595,20 @@ mod tests {
         dlx.push_row(&[false, true, false]);
         dlx.push_row(&[true, false, false]);
         dlx.push_row(&[false, false, true]);
-        let mut solutions = Vec::new();
-        dlx.solve(|solution| {
-            solutions.push(solution);
-        });
-        assert_eq!(solutions.len(), 2);
-        assert_eq!(solutions, vec![vec![0, 1], vec![1, 2, 3],]);
+        assert_solutions(&mut dlx, vec![vec![0, 1], vec![1, 2, 3]]);
+
+        dlx.add_row_to_solution(0);
+        assert_solutions(&mut dlx, vec![vec![0, 1]]);
+
+        dlx.clear_solution();
+        dlx.add_row_to_solution(1);
+        assert_solutions(&mut dlx, vec![vec![0, 1], vec![1, 2, 3]]);
+
+        for row_index in 2..=3 {
+            dlx.clear_solution();
+            dlx.add_row_to_solution(row_index);
+            assert_solutions(&mut dlx, vec![vec![1, 2, 3]]);
+        }
     }
 
     #[test]
@@ -567,11 +621,7 @@ mod tests {
         dlx.push_row(&[true, false, false, true, false, false, false]);
         dlx.push_row(&[false, true, false, false, false, false, true]);
         dlx.push_row(&[false, false, false, true, true, false, true]);
-        let mut solutions = Vec::new();
-        dlx.solve(|solution| {
-            solutions.push(solution);
-        });
-        assert_eq!(solutions, vec![vec![0, 3, 4]]);
+        assert_solutions(&mut dlx, vec![vec![0, 3, 4]]);
     }
 
     /// Solve a single instance of the four-column version of DLX using `seed` as the values for each row.
