@@ -625,6 +625,7 @@ mod tests {
     }
 
     /// Solve a single instance of the four-column version of DLX using `seed` as the values for each row.
+    /// Note: This brute force test comes from the Ferrous Systems blog.
     fn solve_seed(seed: u16) -> bool {
         let mut rows = [0u16; 4];
         for (i, row) in rows.iter_mut().enumerate() {
@@ -673,6 +674,8 @@ mod tests {
 
     /// Test the DLX algorithm by solving all four-column cases. By iterating over a u16 and decomposing it into
     /// into its component 4-bit nibbles, we have every possible combination of rows for four columns.
+    /// 
+    /// Note: This brute force test comes from the Ferrous Systems blog.
     #[test]
     fn brute_force() {
         for seed in u16::MIN..=u16::MAX {
