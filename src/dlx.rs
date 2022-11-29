@@ -608,6 +608,11 @@ mod tests {
             dlx.clear_solution();
             dlx.add_row_to_solution(row_index);
             assert_solutions(&mut dlx, vec![vec![1, 2, 3]]);
+
+            dlx.clear_solution();
+            dlx.add_row_to_solution(1);
+            dlx.add_row_to_solution(row_index);
+            assert_solutions(&mut dlx, vec![vec![1, 2, 3]]);
         }
     }
 
@@ -674,7 +679,7 @@ mod tests {
 
     /// Test the DLX algorithm by solving all four-column cases. By iterating over a u16 and decomposing it into
     /// into its component 4-bit nibbles, we have every possible combination of rows for four columns.
-    /// 
+    ///
     /// Note: This brute force test comes from the Ferrous Systems blog.
     #[test]
     fn brute_force() {
