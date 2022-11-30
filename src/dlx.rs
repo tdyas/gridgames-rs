@@ -30,6 +30,17 @@ struct Node(usize);
 /// adjust the index by 1.
 const ROOT_NODE: Node = Node(0);
 
+/// Enum representing actions returned by `found_solution` to control how `DLX::solve` proceses
+/// solutions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SolveAction {
+    /// Continue searching for solitions.
+    Continue,
+
+    /// Stop searching for solutions.
+    Stop,
+}
+
 /// DLX encapsulates state for applying the DLX algorithm to solve an exact cover problem.
 pub struct DLX {
     /// Number of columns in the matrix.
@@ -154,15 +165,14 @@ impl DLX {
     }
 
     /// Internal helper for recursively searching for solutions.
-    fn search<F>(&mut self, found_solution: &mut F)
+    fn search<F>(&mut self, found_solution: &mut F) -> SolveAction
     where
-        F: FnMut(Vec<usize>),
+        F: FnMut(Vec<usize>) -> SolveAction,
     {
         // If all columns are covered, then we have found a solution.
         if self.row_links[ROOT_NODE].next == ROOT_NODE {
             let solution = self.convert_row_nodes_to_row_indices(&self.proposed_solution_row_nodes);
-            found_solution(solution);
-            return;
+            return found_solution(solution);
         }
 
         // Choose the column from the remaining columns with the smallest "branching factor" to minimize work
@@ -189,7 +199,8 @@ impl DLX {
         // Loop through each row in the selected column and tentatively add it to the proposed solution.
         // Before recursing, cover any other columns that each of those those rows are in.
         let mut current_node = self.column_links[selected_col_node].next;
-        while current_node != selected_col_node {
+        let mut continue_search = true;
+        while continue_search && current_node != selected_col_node {
             self.proposed_solution_row_nodes.push(current_node);
 
             // Cover every other column covered by the current row.
@@ -202,7 +213,10 @@ impl DLX {
             }
 
             // Continue searching for solutions witin the remaining rows.
-            self.search(found_solution);
+            let solve_action = self.search(found_solution);
+            if solve_action == SolveAction::Stop {
+                continue_search = false;
+            }
 
             // Remove the current row from the list of proposed solution rows.
             self.proposed_solution_row_nodes.pop();
@@ -224,6 +238,12 @@ impl DLX {
 
         // Uncover the selected column.
         self.uncover_column(selected_col_node);
+
+        if continue_search {
+            SolveAction::Continue
+        } else {
+            SolveAction::Stop
+        }
     }
 
     fn cover_column(&mut self, col_node: Node) {
@@ -298,7 +318,7 @@ impl DLX {
     /// trigger a call to the given closure.
     pub fn solve<F>(&mut self, mut found_solution: F)
     where
-        F: FnMut(Vec<usize>),
+        F: FnMut(Vec<usize>) -> SolveAction,
     {
         self.search(&mut found_solution);
     }
@@ -452,7 +472,7 @@ impl fmt::Debug for NodeLinks {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, Node, NodeLinks, DLX};
+    use super::{Link, Node, NodeLinks, SolveAction, DLX};
 
     #[test]
     fn node_links_basic_test() {
@@ -584,6 +604,7 @@ mod tests {
         let mut actual_solutions = Vec::new();
         dlx.solve(|solution| {
             actual_solutions.push(solution);
+            SolveAction::Continue
         });
         assert_eq!(actual_solutions, expected_solutions);
     }
@@ -669,7 +690,10 @@ mod tests {
                 m.push_row(&row);
             }
             let mut count = 0;
-            m.solve(|_solution| count += 1);
+            m.solve(|_solution| {
+                count += 1;
+                SolveAction::Continue
+            });
             count
         };
 
