@@ -3,14 +3,11 @@
 //! This module provides the foundational data structures required to build Sudoku solvers on
 //! top of the Dancing Links (`dlx`) implementation. It mirrors the legacy C++ solver layout by
 //! exposing Sudoku-specific graph metadata and a lightweight board representation.
+//! The DLX matrix uses 324 columns arranged as 81 cell-occupancy constraints followed by
+//! 27 zones × 9 digits each enforcing that every digit appears exactly once per zone.
 
 use crate::dlx::{Dlx, SolveAction};
-use std::{
-    borrow::Cow,
-    collections::HashSet,
-    fmt,
-    str::FromStr,
-};
+use std::{borrow::Cow, collections::HashSet, fmt, str::FromStr};
 
 /// Metadata describing the constraint graph for a Sudoku-like puzzle.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -250,6 +247,11 @@ fn normalize_puzzle_string(s: &str) -> Cow<'_, str> {
 }
 
 /// Sudoku solver that leverages the DLX exact-cover implementation.
+///
+/// The underlying exact-cover matrix uses the column ordering described in the module docs:
+/// one column per cell, followed by zone×digit columns. Each candidate `(cell, digit)` row
+/// asserts the cell column and the three zone columns corresponding to the cell's row, column,
+/// and box. Givens are applied by pre-selecting the associated rows before invoking `solve`.
 pub struct SudokuDlxSolver {
     graph: SudokuGraph,
     dlx: Dlx,
@@ -280,9 +282,8 @@ impl SudokuDlxSolver {
 
                 // Zone/value constraints: each zone contains each digit at most once.
                 for &zone_index in &graph.metadata.zones_for_cell[cell_index] {
-                    let column = num_cell_columns
-                        + zone_index * graph.metadata.num_values
-                        + (value - 1);
+                    let column =
+                        num_cell_columns + zone_index * graph.metadata.num_values + (value - 1);
                     row_buffer[column] = true;
                 }
 
@@ -345,11 +346,7 @@ impl SudokuDlxSolver {
         solutions
     }
 
-    fn row_index_for_assignment(
-        cell_index: usize,
-        value: u8,
-        num_values: usize,
-    ) -> usize {
+    fn row_index_for_assignment(cell_index: usize, value: u8, num_values: usize) -> usize {
         assert!(value >= 1 && value as usize <= num_values);
         cell_index * num_values + (value as usize - 1)
     }
@@ -478,9 +475,113 @@ mod tests {
         let board: SudokuBoard = puzzle.parse().expect("valid puzzle");
         let solutions = solver.solve_with_limit(&board, Some(2));
 
-        assert_eq!(solutions.len(), 2, "expected solver to stop after two solutions");
+        assert_eq!(
+            solutions.len(),
+            2,
+            "expected solver to stop after two solutions"
+        );
         for solved in solutions {
             assert!(!solved.to_puzzle_string().contains('.'));
         }
+    }
+
+    #[test]
+    fn dlx_solver_returns_zero_for_contradictory_board() {
+        let mut solver = SudokuDlxSolver::new();
+        let puzzle = "\
+            550070000\
+            600195000\
+            098000060\
+            800060003\
+            400803001\
+            700020006\
+            060000280\
+            000419005\
+            000080079";
+        let board: SudokuBoard = puzzle.parse().expect("valid puzzle format");
+        let solutions = solver.solve(&board);
+        assert!(solutions.is_empty());
+    }
+
+    #[test]
+    fn dlx_solver_is_reusable_between_runs() {
+        let mut solver = SudokuDlxSolver::new();
+        let puzzle = "\
+            530070000\
+            600195000\
+            098000060\
+            800060003\
+            400803001\
+            700020006\
+            060000280\
+            000419005\
+            000080079";
+        let board: SudokuBoard = puzzle.parse().expect("valid puzzle");
+
+        let first = solver.solve(&board);
+        let second = solver.solve(&board);
+
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 1);
+    }
+
+    #[test]
+    fn solution_rows_cover_all_columns() {
+        let mut solver = SudokuDlxSolver::new();
+        let puzzle = "\
+            530070000\
+            600195000\
+            098000060\
+            800060003\
+            400803001\
+            700020006\
+            060000280\
+            000419005\
+            000080079";
+        let board: SudokuBoard = puzzle.parse().expect("valid puzzle");
+
+        solver.dlx.clear_solution();
+        for cell_index in board.given_indices() {
+            let value = board.value(cell_index);
+            if value != 0 {
+                let row_index = SudokuDlxSolver::row_index_for_assignment(
+                    cell_index,
+                    value,
+                    solver.graph.metadata.num_values,
+                );
+                solver.dlx.add_row_to_solution(row_index);
+            }
+        }
+
+        let mut captured_rows = Vec::new();
+        solver.dlx.solve(|rows| {
+            captured_rows = rows;
+            SolveAction::Stop
+        });
+
+        solver.dlx.clear_solution();
+
+        let num_columns = solver.graph.metadata.num_cells
+            + solver.graph.metadata.zones.len() * solver.graph.metadata.num_values;
+        assert_eq!(captured_rows.len(), solver.graph.metadata.num_cells);
+
+        let mut column_counts = vec![0u8; num_columns];
+        for row_index in captured_rows {
+            let (cell_index, digit) = solver.row_assignments[row_index];
+
+            if board.value(cell_index) != 0 {
+                assert_eq!(board.value(cell_index), digit);
+            }
+
+            column_counts[cell_index] += 1;
+            for &zone_index in &solver.graph.metadata.zones_for_cell[cell_index] {
+                let column = solver.graph.metadata.num_cells
+                    + zone_index * solver.graph.metadata.num_values
+                    + (digit as usize - 1);
+                column_counts[column] += 1;
+            }
+        }
+
+        assert!(column_counts.iter().all(|&count| count == 1));
     }
 }
