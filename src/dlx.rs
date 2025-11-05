@@ -42,7 +42,7 @@ pub enum SolveAction {
 }
 
 /// DLX encapsulates state for applying the DLX algorithm to solve an exact cover problem.
-pub struct DLX {
+pub struct Dlx {
     /// Number of columns in the matrix.
     num_columns: usize,
 
@@ -76,13 +76,13 @@ pub struct DLX {
     proposed_solution_row_nodes: Vec<Node>,
 }
 
-impl DLX {
+impl Dlx {
     /// Create a new DLX for solving an exact cover problem with the given number of columns. (The number of
     /// columns cannot be changed after a DLX is initialized.)
     ///
     /// Rows can then be added using `add_row` and then search for solutions using `solve`.
     pub fn new(num_columns: usize) -> Self {
-        let mut dlx = DLX {
+        let mut dlx = Dlx {
             num_columns,
             column_links: NodeLinks::new(),
             row_links: NodeLinks::new(),
@@ -132,6 +132,7 @@ impl DLX {
         let mut first_node = None;
         let mut last_node = None;
 
+        #[allow(clippy::needless_range_loop)]
         for col_num in 0..self.num_columns {
             // Skip false values since we are using a sparse matrix of true values.
             if !row_values[col_num] {
@@ -472,7 +473,7 @@ impl fmt::Debug for NodeLinks {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, Node, NodeLinks, SolveAction, DLX};
+    use super::{Link, Node, NodeLinks, SolveAction, Dlx};
 
     #[test]
     fn node_links_basic_test() {
@@ -600,7 +601,7 @@ mod tests {
         );
     }
 
-    fn assert_solutions(dlx: &mut DLX, expected_solutions: Vec<Vec<usize>>) {
+    fn assert_solutions(dlx: &mut Dlx, expected_solutions: Vec<Vec<usize>>) {
         let mut actual_solutions = Vec::new();
         dlx.solve(|solution| {
             actual_solutions.push(solution);
@@ -611,7 +612,7 @@ mod tests {
 
     #[test]
     fn small_problem() {
-        let mut dlx = DLX::new(3);
+        let mut dlx = Dlx::new(3);
         dlx.push_row(&[true, false, true]);
         dlx.push_row(&[false, true, false]);
         dlx.push_row(&[true, false, false]);
@@ -640,7 +641,7 @@ mod tests {
     #[test]
     fn example_from_knuth_paper() {
         // This problem comes from the Kunth Dancing Links paper.
-        let mut dlx = DLX::new(7);
+        let mut dlx = Dlx::new(7);
         dlx.push_row(&[false, false, true, false, true, true, false]);
         dlx.push_row(&[true, false, false, true, false, false, true]);
         dlx.push_row(&[false, true, true, false, false, true, false]);
@@ -681,7 +682,7 @@ mod tests {
         };
 
         let dlx = {
-            let mut m = DLX::new(4);
+            let mut m = Dlx::new(4);
             for row_bits in rows.iter() {
                 let mut row = [false; 4];
                 for i in 0..4 {
