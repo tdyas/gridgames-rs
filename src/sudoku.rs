@@ -6,7 +6,7 @@
 //! The Dlx constaint matrix uses 324 columns arranged as 81 cell-occupancy constraints followed by
 //! 27 zones × 9 digits each enforcing that every digit appears exactly once per zone.
 
-use std::{borrow::Cow, collections::HashSet, fmt, str::FromStr};
+use std::{borrow::Cow, collections::HashSet, fmt, num::NonZeroU8, str::FromStr};
 
 use crate::dlx::{Dlx, SolveAction};
 
@@ -137,56 +137,62 @@ impl SudokuGraph {
 /// Mutable Sudoku board that stores digits in row-major order.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SudokuBoard {
-    cells: [u8; SudokuGraph::NUM_CELLS],
+    cells: [Option<NonZeroU8>; SudokuGraph::NUM_CELLS],
 }
 
 impl SudokuBoard {
     /// Creates an empty board (all cells unset).
     pub fn empty() -> SudokuBoard {
         SudokuBoard {
-            cells: [0; SudokuGraph::NUM_CELLS],
+            cells: [None; SudokuGraph::NUM_CELLS],
         }
     }
 
-    /// Returns the stored digit at the provided cell index (0 for empty).
-    pub fn value(&self, index: usize) -> u8 {
+    /// Returns the stored digit at the provided cell index (`None` for empty).
+    pub fn value(&self, index: usize) -> Option<u8> {
         assert!(index < SudokuGraph::NUM_CELLS);
-        self.cells[index]
+        self.cells[index].map(|digit| digit.get())
     }
 
-    /// Sets a digit (1-9) or clears a cell by providing 0.
-    pub fn set_value(&mut self, index: usize, value: u8) -> Result<(), String> {
+    /// Sets a digit (1-9) or clears a cell by providing `None`.
+    pub fn set_value(&mut self, index: usize, value: Option<u8>) -> Result<(), String> {
         if index >= SudokuGraph::NUM_CELLS {
             return Err(format!("cell index {index} is out of bounds"));
         }
-        if value > 9 {
-            return Err(format!("value {value} is outside the allowed range 0-9"));
+        match value {
+            Some(digit @ 1..=9) => {
+                self.cells[index] = NonZeroU8::new(digit);
+                Ok(())
+            }
+            Some(digit) => Err(format!("value {digit} is outside the allowed range 1-9")),
+            None => {
+                self.cells[index] = None;
+                Ok(())
+            }
         }
-        self.cells[index] = value;
-        Ok(())
     }
 
     /// Removes any digit from the given cell.
     pub fn clear(&mut self, index: usize) {
         assert!(index < SudokuGraph::NUM_CELLS);
-        self.cells[index] = 0;
+        self.cells[index] = None;
     }
 
-    /// Iterator over indices that currently have givens (non-zero values).
+    /// Iterator over indices that currently have givens.
     pub fn given_indices(&self) -> impl Iterator<Item = usize> + '_ {
         self.cells
             .iter()
             .enumerate()
-            .filter_map(|(idx, &value)| if value != 0 { Some(idx) } else { None })
+            .filter_map(|(idx, value)| value.map(|_| idx))
     }
 
     /// Returns an owning string representation using '.' for empty cells.
     pub fn to_puzzle_string(&self) -> String {
         self.cells
             .iter()
-            .map(|&value| match value {
-                0 => '.',
-                digit => (b'0' + digit) as char,
+            .map(|value| match value {
+                None => '.',
+                Some(digit) => (b'0' + digit.get()) as char,
             })
             .collect()
     }
@@ -205,11 +211,9 @@ impl fmt::Display for SudokuBoard {
                 writeln!(f)?;
             }
             for col in 0..9 {
-                let value = self.value(row * 9 + col);
-                if value == 0 {
-                    write!(f, ".")?;
-                } else {
-                    write!(f, "{value}")?;
+                match self.value(row * 9 + col) {
+                    Some(value) => write!(f, "{value}")?,
+                    None => write!(f, ".")?,
                 }
                 if col != 8 {
                     write!(f, " ")?
@@ -237,8 +241,8 @@ impl FromStr for SudokuBoard {
         let mut board = SudokuBoard::empty();
         for (idx, ch) in trimmed.chars().enumerate() {
             let value = match ch {
-                '1'..='9' => ch as u8 - b'0',
-                '0' | '.' => 0,
+                '1'..='9' => NonZeroU8::new(ch as u8 - b'0'),
+                '0' | '.' => None,
                 _ => {
                     return Err(format!(
                         "invalid character '{ch}' at position {idx}; expected digits or '.'"
@@ -330,13 +334,14 @@ impl SudokuDlxSolver {
         self.dlx.clear_solution();
 
         for cell_index in board.given_indices() {
-            let value = board.value(cell_index);
-            if value == 0 {
-                continue;
+            if let Some(value) = board.value(cell_index) {
+                let row_index = Self::row_index_for_assignment(
+                    cell_index,
+                    value,
+                    self.graph.metadata.num_values,
+                );
+                self.dlx.add_row_to_solution(row_index);
             }
-            let row_index =
-                Self::row_index_for_assignment(cell_index, value, self.graph.metadata.num_values);
-            self.dlx.add_row_to_solution(row_index);
         }
 
         self.dlx.solve(|solution_rows| {
@@ -344,7 +349,7 @@ impl SudokuDlxSolver {
             for row_index in solution_rows {
                 let (cell_index, digit) = self.row_assignments[row_index];
                 solved
-                    .set_value(cell_index, digit)
+                    .set_value(cell_index, Some(digit))
                     .expect("solver should only emit valid digits");
             }
             solutions.push(solved);
@@ -407,10 +412,10 @@ mod tests {
             000419005\
             000080079";
         let board: SudokuBoard = puzzle.parse().expect("valid puzzle");
-        assert_eq!(board.value(0), 5);
-        assert_eq!(board.value(1), 3);
-        assert_eq!(board.value(2), 0);
-        assert_eq!(board.value(80), 9);
+        assert_eq!(board.value(0), Some(5));
+        assert_eq!(board.value(1), Some(3));
+        assert_eq!(board.value(2), None);
+        assert_eq!(board.value(80), Some(9));
 
         let reconstructed = board.to_puzzle_string();
         let expected: String = puzzle
@@ -423,16 +428,16 @@ mod tests {
     #[test]
     fn board_set_value_validates_input() {
         let mut board = SudokuBoard::empty();
-        assert!(board.set_value(10, 5).is_ok());
-        assert_eq!(board.value(10), 5);
+        assert!(board.set_value(10, Some(5)).is_ok());
+        assert_eq!(board.value(10), Some(5));
 
-        assert!(board.set_value(10, 0).is_ok());
-        assert_eq!(board.value(10), 0);
+        assert!(board.set_value(10, None).is_ok());
+        assert_eq!(board.value(10), None);
 
-        let err = board.set_value(100, 1).unwrap_err();
+        let err = board.set_value(100, Some(1)).unwrap_err();
         assert!(err.contains("out of bounds"));
 
-        let err = board.set_value(0, 12).unwrap_err();
+        let err = board.set_value(0, Some(12)).unwrap_err();
         assert!(err.contains("outside the allowed range"));
     }
 
@@ -556,8 +561,7 @@ mod tests {
 
         solver.dlx.clear_solution();
         for cell_index in board.given_indices() {
-            let value = board.value(cell_index);
-            if value != 0 {
+            if let Some(value) = board.value(cell_index) {
                 let row_index = SudokuDlxSolver::row_index_for_assignment(
                     cell_index,
                     value,
@@ -583,8 +587,8 @@ mod tests {
         for row_index in captured_rows {
             let (cell_index, digit) = solver.row_assignments[row_index];
 
-            if board.value(cell_index) != 0 {
-                assert_eq!(board.value(cell_index), digit);
+            if let Some(given_digit) = board.value(cell_index) {
+                assert_eq!(given_digit, digit);
             }
 
             column_counts[cell_index] += 1;
