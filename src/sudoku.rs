@@ -1,9 +1,9 @@
-//! Sudoku solver scaffolding.
+//! Sudoku solver.
 //!
-//! This module provides the foundational data structures required to build Sudoku solvers on
-//! top of the Dancing Links (`dlx`) implementation. It mirrors the legacy C++ solver layout by
-//! exposing Sudoku-specific graph metadata and a lightweight board representation.
-//! The DLX matrix uses 324 columns arranged as 81 cell-occupancy constraints followed by
+//! This module provides a Sudoku solver built on top of the Dancing Links (`dlx`) implementation
+//! in the [`crate::dlx`] module.
+//!
+//! The Dlx constaint matrix uses 324 columns arranged as 81 cell-occupancy constraints followed by
 //! 27 zones × 9 digits each enforcing that every digit appears exactly once per zone.
 
 use crate::dlx::{Dlx, SolveAction};
