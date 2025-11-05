@@ -6,8 +6,9 @@
 //! The Dlx constaint matrix uses 324 columns arranged as 81 cell-occupancy constraints followed by
 //! 27 zones × 9 digits each enforcing that every digit appears exactly once per zone.
 
-use crate::dlx::{Dlx, SolveAction};
 use std::{borrow::Cow, collections::HashSet, fmt, str::FromStr};
+
+use crate::dlx::{Dlx, SolveAction};
 
 /// Metadata describing the constraint graph for a Sudoku-like puzzle.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,7 +86,7 @@ impl SudokuGraph {
     pub const NUM_ZONES: usize = 27;
 
     /// Returns metadata for a standard 9x9 Sudoku puzzle (rows, columns, 3x3 boxes).
-    pub fn classic() -> SudokuGraph {
+    pub fn new() -> SudokuGraph {
         let mut zones: Vec<Vec<usize>> = Vec::with_capacity(Self::NUM_ZONES);
 
         // Row zones.
@@ -260,7 +261,7 @@ pub struct SudokuDlxSolver {
 
 impl SudokuDlxSolver {
     pub fn new() -> SudokuDlxSolver {
-        SudokuDlxSolver::with_graph(SudokuGraph::classic())
+        SudokuDlxSolver::with_graph(SudokuGraph::new())
     }
 
     pub fn with_graph(graph: SudokuGraph) -> SudokuDlxSolver {
@@ -358,7 +359,7 @@ mod tests {
 
     #[test]
     fn classic_metadata_has_expected_geometry() {
-        let graph = SudokuGraph::classic();
+        let graph = SudokuGraph::new();
         let metadata = graph.metadata;
 
         assert_eq!(metadata.num_cells, 81);
