@@ -246,7 +246,7 @@ impl FromStr for SudokuBoard {
                 _ => {
                     return Err(format!(
                         "invalid character '{ch}' at position {idx}; expected digits or '.'"
-                    ))
+                    ));
                 }
             };
             board.cells[idx] = value;
