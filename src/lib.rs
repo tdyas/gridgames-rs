@@ -6,3 +6,4 @@
 #![allow(dead_code)]
 
 mod dlx;
+mod sudoku;
