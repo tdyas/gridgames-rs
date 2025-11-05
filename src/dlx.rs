@@ -14,6 +14,8 @@
 //! much more friendly to implement in Safe Rust. Although I have used more descriptive names for
 //! the side tables then the single letter names used in Knuth's paper.
 
+#![allow(clippy::needless_range_loop)]
+
 use std::{fmt, ops};
 
 /// A node represents a `true` value in the sparse matrix used to represent rows and columns for the DLX
@@ -132,7 +134,6 @@ impl Dlx {
         let mut first_node = None;
         let mut last_node = None;
 
-        #[allow(clippy::needless_range_loop)]
         for col_num in 0..self.num_columns {
             // Skip false values since we are using a sparse matrix of true values.
             if !row_values[col_num] {
