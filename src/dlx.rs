@@ -473,7 +473,7 @@ impl fmt::Debug for NodeLinks {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, Node, NodeLinks, SolveAction, Dlx};
+    use super::{Dlx, Link, Node, NodeLinks, SolveAction};
 
     #[test]
     fn node_links_basic_test() {
