@@ -5,5 +5,5 @@
 
 #![allow(dead_code)]
 
-mod dlx;
-mod sudoku;
+pub mod dlx;
+pub mod sudoku;
