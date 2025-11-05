@@ -13,12 +13,19 @@ use crate::dlx::{Dlx, SolveAction};
 /// Metadata describing the constraint graph for a Sudoku-like puzzle.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneMetadata {
+    // Total number of cells in the game.
     pub num_cells: usize,
+
+    // Number of values allowed in the same (e.g, for Sudoku 1-9 are the values).
     pub num_values: usize,
+
+    // Define each zone by the cell indices for that zone.
     pub zones: Vec<Vec<usize>>,
+
     /// For each cell, the list of other cells that share at least one zone.
     pub neighbors_for_cell: Vec<Vec<usize>>,
-    /// For each cell, the zones the cell participates in.
+
+    /// For each cell, the zones the cell is a member of.
     pub zones_for_cell: Vec<Vec<usize>>,
 }
 
@@ -182,6 +189,12 @@ impl SudokuBoard {
                 digit => (b'0' + digit) as char,
             })
             .collect()
+    }
+}
+
+impl Default for SudokuBoard {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 
