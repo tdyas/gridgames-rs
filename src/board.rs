@@ -199,12 +199,9 @@ impl Board {
 
     // ===== Querying State =====
 
-    /// Gets the value at a cell (0 = empty, 1-N = filled)
-    pub fn get_value(&self, index: usize) -> u8 {
-        self.values
-            .get(index)
-            .and_then(|v| v.map(|nz| nz.get()))
-            .unwrap_or(0)
+    /// Gets the value at a cell (None = empty, Some(v) = filled with value v)
+    pub fn get_value(&self, index: usize) -> Option<u8> {
+        self.values.get(index).and_then(|v| v.map(|nz| nz.get()))
     }
 
     /// Checks if a cell is empty
@@ -212,12 +209,9 @@ impl Board {
         self.values.get(index).map(|v| v.is_none()).unwrap_or(true)
     }
 
-    /// Gets all cell values as a flat array (0 = empty, 1-N = filled)
-    pub fn get_all_values(&self) -> Vec<u8> {
-        self.values
-            .iter()
-            .map(|v| v.map(|nz| nz.get()).unwrap_or(0))
-            .collect()
+    /// Gets all cell values as a flat array (None = empty, Some(v) = filled with value v)
+    pub fn get_all_values(&self) -> Vec<Option<u8>> {
+        self.values.iter().map(|v| v.map(|nz| nz.get())).collect()
     }
 
     /// Gets the bitmask of possible values for a cell
@@ -411,11 +405,9 @@ impl Board {
         for row in 0..side {
             for col in 0..side {
                 let idx = row * side + col;
-                let val = self.get_value(idx);
-                if val == 0 {
-                    print!(" . ");
-                } else {
-                    print!(" {} ", val);
+                match self.get_value(idx) {
+                    Some(val) => print!(" {} ", val),
+                    None => print!(" . "),
                 }
             }
             println!();
@@ -470,7 +462,7 @@ mod tests {
 
         // All cells should be empty
         for i in 0..81 {
-            assert_eq!(board.get_value(i), 0);
+            assert_eq!(board.get_value(i), None);
             assert!(board.is_empty(i));
         }
 
@@ -489,7 +481,7 @@ mod tests {
 
         // Set cell 0 (row 0, col 0) to value 5
         assert!(board.set_value(0, 5).is_ok());
-        assert_eq!(board.get_value(0), 5);
+        assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.num_set_cells(), 1);
         assert_eq!(board.count_possible(0), 0); // No other values possible
 
@@ -578,12 +570,12 @@ mod tests {
 
         // Set cell 0 to value 5
         board.set_value(0, 5).unwrap();
-        assert_eq!(board.get_value(0), 5);
+        assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.num_set_cells(), 1);
 
         // Reset cell 0
         board.reset_value(0).unwrap();
-        assert_eq!(board.get_value(0), 0);
+        assert_eq!(board.get_value(0), None);
         assert_eq!(board.num_set_cells(), 0);
         assert!(board.is_empty(0));
 
@@ -606,9 +598,9 @@ mod tests {
 
         let board = Board::from_values(metadata.clone(), &values).unwrap();
 
-        assert_eq!(board.get_value(0), 5);
-        assert_eq!(board.get_value(1), 3);
-        assert_eq!(board.get_value(9), 7);
+        assert_eq!(board.get_value(0), Some(5));
+        assert_eq!(board.get_value(1), Some(3));
+        assert_eq!(board.get_value(9), Some(7));
         assert_eq!(board.num_set_cells(), 3);
 
         // Check constraint propagation happened
@@ -673,15 +665,9 @@ mod tests {
 
         // Fill entire board with a valid Sudoku solution
         let solution = vec![
-            5, 3, 4, 6, 7, 8, 9, 1, 2,
-            6, 7, 2, 1, 9, 5, 3, 4, 8,
-            1, 9, 8, 3, 4, 2, 5, 6, 7,
-            8, 5, 9, 7, 6, 1, 4, 2, 3,
-            4, 2, 6, 8, 5, 3, 7, 9, 1,
-            7, 1, 3, 9, 2, 4, 8, 5, 6,
-            9, 6, 1, 5, 3, 7, 2, 8, 4,
-            2, 8, 7, 4, 1, 9, 6, 3, 5,
-            3, 4, 5, 2, 8, 6, 1, 7, 9,
+            5, 3, 4, 6, 7, 8, 9, 1, 2, 6, 7, 2, 1, 9, 5, 3, 4, 8, 1, 9, 8, 3, 4, 2, 5, 6, 7, 8, 5,
+            9, 7, 6, 1, 4, 2, 3, 4, 2, 6, 8, 5, 3, 7, 9, 1, 7, 1, 3, 9, 2, 4, 8, 5, 6, 9, 6, 1, 5,
+            3, 7, 2, 8, 4, 2, 8, 7, 4, 1, 9, 6, 3, 5, 3, 4, 5, 2, 8, 6, 1, 7, 9,
         ];
 
         for (idx, &val) in solution.iter().enumerate() {
@@ -776,7 +762,7 @@ mod tests {
 
         let board2 = board.clone();
 
-        assert_eq!(board2.get_value(0), 5);
+        assert_eq!(board2.get_value(0), Some(5));
         assert_eq!(board2.get_stat("test"), 1);
         assert_eq!(board2.num_set_cells(), 1);
     }
@@ -793,9 +779,9 @@ mod tests {
 
         // Convert to Board
         let board = Board::from_sudoku_board(&sudoku, metadata.clone()).unwrap();
-        assert_eq!(board.get_value(0), 5);
-        assert_eq!(board.get_value(1), 3);
-        assert_eq!(board.get_value(10), 7);
+        assert_eq!(board.get_value(0), Some(5));
+        assert_eq!(board.get_value(1), Some(3));
+        assert_eq!(board.get_value(10), Some(7));
         assert_eq!(board.num_set_cells(), 3);
 
         // Convert back to SudokuBoard
@@ -821,8 +807,8 @@ mod tests {
         board.set_value(0, 5).unwrap();
 
         // Zone 0 (row 0), zone 9 (col 0), and zone 18 (box 0) should each have 8 unfilled cells
-        assert_eq!(board.zone_count(0), 8);  // Row 0
-        assert_eq!(board.zone_count(9), 8);  // Column 0
+        assert_eq!(board.zone_count(0), 8); // Row 0
+        assert_eq!(board.zone_count(9), 8); // Column 0
         assert_eq!(board.zone_count(18), 8); // Box 0
 
         // Other zones should still have 9
