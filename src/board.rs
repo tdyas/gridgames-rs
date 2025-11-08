@@ -21,8 +21,8 @@ pub struct SolverMove {
     /// Cell index where the move was made
     pub index: usize,
 
-    /// Value that was set (1-N)
-    pub value: u8,
+    /// Value that was set (1-N, never 0)
+    pub value: NonZeroU8,
 
     /// Technique that found this move (e.g., "single", "hidden_single")
     pub technique: String,
@@ -311,11 +311,14 @@ impl Board {
 
     /// Records a move in the history
     pub fn record_move(&mut self, index: usize, value: u8, technique: impl Into<String>) {
-        self.moves.push(SolverMove {
-            index,
-            value,
-            technique: technique.into(),
-        });
+        // value should always be 1-N, never 0, so this should always succeed
+        if let Some(nz_value) = NonZeroU8::new(value) {
+            self.moves.push(SolverMove {
+                index,
+                value: nz_value,
+                technique: technique.into(),
+            });
+        }
     }
 
     /// Gets all recorded moves
@@ -742,10 +745,10 @@ mod tests {
         let moves = board.get_moves();
         assert_eq!(moves.len(), 2);
         assert_eq!(moves[0].index, 0);
-        assert_eq!(moves[0].value, 5);
+        assert_eq!(moves[0].value.get(), 5);
         assert_eq!(moves[0].technique, "single");
         assert_eq!(moves[1].index, 1);
-        assert_eq!(moves[1].value, 3);
+        assert_eq!(moves[1].value.get(), 3);
         assert_eq!(moves[1].technique, "hidden_single");
 
         board.clear_moves();
