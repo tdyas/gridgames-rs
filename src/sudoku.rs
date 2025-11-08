@@ -10,6 +10,8 @@ use std::{borrow::Cow, collections::HashSet, fmt, num::NonZeroU8, str::FromStr};
 
 use crate::dlx::{Dlx, SolveAction};
 
+pub mod logical;
+
 /// Metadata describing the constraint graph for a Sudoku-like puzzle.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZoneMetadata {

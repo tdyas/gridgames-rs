@@ -9,6 +9,13 @@ use std::sync::Arc;
 
 use crate::sudoku::{SudokuBoard, ZoneMetadata};
 
+/// Compute the next set of solver moves for a particular [`Board`]. This is
+/// implemented by each strategy.
+pub trait SolveStrategy {
+    /// Return a set of possible moves given the represented strategy.
+    fn compute_solver_moves(board: &Board) -> Vec<SolverMove>;
+}
+
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
 #[derive(Clone, Debug)]
