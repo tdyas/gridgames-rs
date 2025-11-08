@@ -1,38 +1,7 @@
-//! Logical Sudoku solver.
+//! Hidden single solving strategy.
 
 use crate::board::{Board, SolveStrategy, SolverMove};
 use std::num::NonZeroU8;
-
-/// Strategy that finds cells with only one possible value (naked singles).
-pub struct SinglePossibleSolveStrategy;
-
-impl SolveStrategy for SinglePossibleSolveStrategy {
-    /// Finds all cells that have exactly one possible value.
-    fn compute_solver_moves(board: &Board) -> Vec<SolverMove> {
-        let mut moves = Vec::new();
-
-        for index in 0..board.num_cells() {
-            // Skip cells that are already filled
-            if board.get_value(index).is_some() {
-                continue;
-            }
-
-            let possible_values = board.get_possible_values(index);
-            if possible_values.len() == 1 {
-                let value = possible_values[0];
-                if let Some(nz_value) = NonZeroU8::new(value) {
-                    moves.push(SolverMove {
-                        index,
-                        value: nz_value,
-                        technique: "single".to_string(),
-                    });
-                }
-            }
-        }
-
-        moves
-    }
-}
 
 /// Strategy that finds values that can only go in one cell within a zone (hidden singles).
 pub struct HiddenSingleSolveStrategy;
@@ -48,7 +17,7 @@ impl SolveStrategy for HiddenSingleSolveStrategy {
             for value in 1..=metadata.num_values as u8 {
                 let mut possible_cells = Vec::new();
 
-                // Find all cells in this zone where this value is possible
+                // Find all cells in this zone where this value is possible.
                 for &cell_index in zone {
                     // Skip if cell is already filled
                     if board.get_value(cell_index).is_some() {
@@ -65,7 +34,7 @@ impl SolveStrategy for HiddenSingleSolveStrategy {
                     let index = possible_cells[0];
 
                     // Only record if this cell has multiple possibilities
-                    // (if it has only one possibility, it's a naked single, not hidden)
+                    // (if it has only one possibility, it's a naked single, not hidden).
                     if board.count_possible(index) > 1 {
                         if let Some(nz_value) = NonZeroU8::new(value) {
                             moves.push(SolverMove {
@@ -90,63 +59,6 @@ mod tests {
 
     fn make_sudoku_metadata() -> crate::sudoku::ZoneMetadata {
         SudokuGraph::new().metadata
-    }
-
-    #[test]
-    fn test_single_possible_empty_board() {
-        let metadata = make_sudoku_metadata();
-        let board = Board::new(metadata);
-
-        // Empty board has no singles (all cells have 9 possibilities)
-        let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
-        assert_eq!(moves.len(), 0);
-    }
-
-    #[test]
-    fn test_single_possible_finds_naked_single() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
-
-        // Fill row 0 except cell 0, leaving only one possibility (9) for cell 0
-        for col in 1..9 {
-            board.set_value(col, col as u8).unwrap();
-        }
-
-        let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
-
-        // Should find cell 0 with value 9
-        assert_eq!(moves.len(), 1);
-        assert_eq!(moves[0].index, 0);
-        assert_eq!(moves[0].value.get(), 9);
-        assert_eq!(moves[0].technique, "single");
-    }
-
-    #[test]
-    fn test_single_possible_multiple_singles() {
-        let metadata = make_sudoku_metadata();
-
-        // Create a puzzle with multiple naked singles
-        let puzzle_str = "\
-            53.......\
-            6..195...\
-            .98....6.\
-            8...6...3\
-            4..8.3..1\
-            7...2...6\
-            .6....28.\
-            ...419..5\
-            ....8..79";
-
-        let sudoku: SudokuBoard = puzzle_str.parse().unwrap();
-        let board = Board::from_sudoku_board(&sudoku, metadata).unwrap();
-
-        let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
-
-        // There should be at least one single in this position
-        assert!(!moves.is_empty());
-        for mov in &moves {
-            assert_eq!(mov.technique, "single");
-        }
     }
 
     #[test]
@@ -232,11 +144,6 @@ mod tests {
 
         // Cell 0 now has only one possibility (9), which is a naked single
         let hidden_moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
-        let naked_moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
-
-        // Naked single should be found by SinglePossibleSolveStrategy
-        assert_eq!(naked_moves.len(), 1);
-        assert_eq!(naked_moves[0].index, 0);
 
         // HiddenSingleSolveStrategy should NOT report it as a hidden single
         // (it filters out cells with only one possibility)
@@ -266,18 +173,10 @@ mod tests {
         let sudoku: SudokuBoard = puzzle_str.parse().unwrap();
         let board = Board::from_sudoku_board(&sudoku, metadata).unwrap();
 
-        let naked_singles = SinglePossibleSolveStrategy::compute_solver_moves(&board);
         let hidden_singles = HiddenSingleSolveStrategy::compute_solver_moves(&board);
 
-        // This puzzle should have some logical moves available
-        let total_moves = naked_singles.len() + hidden_singles.len();
-        assert!(
-            total_moves > 0,
-            "Should find at least some logical moves in this puzzle"
-        );
-
         // Verify all moves are valid
-        for mov in naked_singles.iter().chain(hidden_singles.iter()) {
+        for mov in hidden_singles.iter() {
             assert!(
                 mov.value.get() >= 1 && mov.value.get() <= 9,
                 "Move value should be in range 1-9"
