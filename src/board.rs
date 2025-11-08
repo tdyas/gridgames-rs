@@ -1,37 +1,13 @@
-//! Generic constraint-propagation board for grid-based logic puzzles
+//! Generic board for grid-based logic puzzles.
 //!
-//! This module provides a game-agnostic Board structure that can represent
-//! any grid-based constraint satisfaction puzzle (Sudoku, Latin Squares, etc.)
+//! This module provides the [`Board`] struct which represents any grid-based constraint
+//! satisfaction puzzle (e.g., Sudoku, Latin Squares, etc.).
 
 use std::collections::HashMap;
 use std::num::NonZeroU8;
 use std::sync::Arc;
 
 use crate::sudoku::{SudokuBoard, ZoneMetadata};
-
-/// Result from searching for the cell with the least possibilities
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FindResult {
-    /// Found a cell with the given index and possibility count
-    Found(usize),
-    /// Board is completely solved (all cells filled)
-    Solved,
-    /// Board has a contradiction (unsolvable state)
-    Contradiction,
-}
-
-/// Represents a single solving move/step
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SolverMove {
-    /// Cell index where the move was made
-    pub index: usize,
-
-    /// Value that was set (1-N, never 0)
-    pub value: NonZeroU8,
-
-    /// Technique that found this move (e.g., "single", "hidden_single")
-    pub technique: String,
-}
 
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
@@ -61,10 +37,33 @@ pub struct Board {
     moves: Vec<SolverMove>,
 }
 
-impl Board {
-    // ===== Construction =====
+/// Represents a single solving move/step
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SolverMove {
+    /// Cell index where the move was made
+    pub index: usize,
 
-    /// Creates a new empty board with the given constraint graph
+    /// Value that was set (1-N, never 0)
+    pub value: NonZeroU8,
+
+    /// Technique that found this move (e.g., "single", "hidden_single")
+    pub technique: String,
+}
+
+/// Result from searching for the cell with the least possibilities.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindResult {
+    /// Found a cell with the given index and possibility count
+    Found(usize),
+    /// Board is completely solved (all cells filled)
+    Solved,
+    /// Board has a contradiction (unsolvable state)
+    Contradiction,
+}
+
+
+impl Board {
+    /// Creates a new empty board with the given zone graph.
     pub fn new(metadata: Arc<ZoneMetadata>) -> Self {
         let num_cells = metadata.num_cells;
         let num_zones = metadata.zones.len();
@@ -87,9 +86,9 @@ impl Board {
         }
     }
 
-    /// Creates a board from initial cell values
-    /// Values should be 0 for empty, 1-N for filled cells
-    pub fn from_values(metadata: Arc<ZoneMetadata>, values: &[u8]) -> Result<Self, String> {
+    /// Creates a board from initial cell values.
+    /// Values should be None for empty, Some(v) for filled cells with value v (1-N)
+    pub fn from_values(metadata: Arc<ZoneMetadata>, values: &[Option<u8>]) -> Result<Self, String> {
         if values.len() != metadata.num_cells {
             return Err(format!(
                 "Expected {} values, got {}",
@@ -100,17 +99,15 @@ impl Board {
 
         let mut board = Self::new(metadata);
         for (index, &value) in values.iter().enumerate() {
-            if value != 0 {
-                board.set_value(index, value)?;
+            if let Some(v) = value {
+                board.set_value(index, v)?;
             }
         }
         Ok(board)
     }
 
-    // ===== Cell Manipulation =====
-
-    /// Sets a cell to a specific value, propagating constraints to neighbors
-    /// Returns an error if the value is invalid or creates a contradiction
+    /// Sets a cell to a specific value, propagating constraints to neighbors.
+    /// Returns an error if the value is invalid or creates a contradiction.
     pub fn set_value(&mut self, index: usize, value: u8) -> Result<(), String> {
         // Validate inputs
         if index >= self.metadata.num_cells {
@@ -487,19 +484,19 @@ mod tests {
         let metadata = make_sudoku_metadata();
         let mut board = Board::new(metadata.clone());
 
-        // Set cell 0 (row 0, col 0) to value 5
+        // Set cell 0 (row 0, col 0) to value 5.
         assert!(board.set_value(0, 5).is_ok());
         assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.num_set_cells(), 1);
         assert_eq!(board.count_possible(0), 0); // No other values possible
 
-        // Value 5 should be removed from all neighbors
+        // Value 5 should be removed from all neighbors.
         // Check same row (cells 1-8)
         for col in 1..9 {
             assert!(!board.is_value_possible(col, 5));
         }
 
-        // Check same column (cells 9, 18, 27, ...)
+        // Check same column (cells 9, 18, 27, ...).
         for row in 1..9 {
             assert!(!board.is_value_possible(row * 9, 5));
         }
@@ -599,10 +596,10 @@ mod tests {
         let metadata = make_sudoku_metadata();
 
         // Create a simple pattern
-        let mut values = vec![0u8; 81];
-        values[0] = 5;
-        values[1] = 3;
-        values[9] = 7;
+        let mut values = vec![None; 81];
+        values[0] = Some(5);
+        values[1] = Some(3);
+        values[9] = Some(7);
 
         let board = Board::from_values(metadata.clone(), &values).unwrap();
 
@@ -619,7 +616,7 @@ mod tests {
     #[test]
     fn test_from_values_wrong_length() {
         let metadata = make_sudoku_metadata();
-        let values = vec![0u8; 50]; // Wrong length
+        let values = vec![None; 50]; // Wrong length
 
         let result = Board::from_values(metadata, &values);
         assert!(result.is_err());
