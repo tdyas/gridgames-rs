@@ -1,6 +1,7 @@
 //! Hidden single solving strategy.
 
 use crate::board::{Board, SolveStrategy, SolverMove};
+use std::collections::HashSet;
 use std::num::NonZeroU8;
 
 /// Strategy that finds values that can only go in one cell within a zone (hidden singles).
@@ -10,6 +11,7 @@ impl SolveStrategy for HiddenSingleSolveStrategy {
     /// Finds all values that can only go in one cell within each zone.
     fn compute_solver_moves(board: &Board) -> Vec<SolverMove> {
         let mut moves = Vec::new();
+        let mut seen_moves = HashSet::new();
         let metadata = board.metadata();
 
         // For each zone, check each value
@@ -37,11 +39,13 @@ impl SolveStrategy for HiddenSingleSolveStrategy {
                     // (if it has only one possibility, it's a naked single, not hidden).
                     if board.count_possible(index) > 1 {
                         if let Some(nz_value) = NonZeroU8::new(value) {
-                            moves.push(SolverMove {
-                                index,
-                                value: nz_value,
-                                technique: "hidden_single".to_string(),
-                            });
+                            if seen_moves.insert((index, value)) {
+                                moves.push(SolverMove {
+                                    index,
+                                    value: nz_value,
+                                    technique: "hidden_single".to_string(),
+                                });
+                            }
                         }
                     }
                 }
@@ -56,6 +60,7 @@ impl SolveStrategy for HiddenSingleSolveStrategy {
 mod tests {
     use super::*;
     use crate::sudoku::{SudokuBoard, SudokuGraph};
+    use std::collections::HashSet;
 
     fn make_sudoku_metadata() -> crate::sudoku::ZoneMetadata {
         SudokuGraph::new().metadata
@@ -174,20 +179,126 @@ mod tests {
         let board = Board::from_sudoku_board(&sudoku, metadata).unwrap();
 
         let hidden_singles = HiddenSingleSolveStrategy::compute_solver_moves(&board);
+        assert!(
+            !hidden_singles.is_empty(),
+            "Puzzle should produce at least one hidden single"
+        );
 
-        // Verify all moves are valid
+        let metadata = board.metadata();
+        let unique_moves: HashSet<(usize, u8)> = hidden_singles
+            .iter()
+            .map(|m| (m.index, m.value.get()))
+            .collect();
+
+        assert_eq!(
+            unique_moves.len(),
+            hidden_singles.len(),
+            "Hidden singles should be unique per cell/value pair: {:?}",
+            hidden_singles
+        );
+
+        let expected_moves = [
+            (5, 8),
+            (7, 1),
+            (22, 4),
+            (24, 5),
+            (38, 6),
+            (42, 7),
+            (47, 3),
+            (51, 8),
+            (54, 9),
+            (64, 8),
+            (69, 6),
+            (78, 1),
+        ];
+        let expected_set: HashSet<(usize, u8)> = expected_moves.into_iter().collect();
+        assert_eq!(
+            unique_moves, expected_set,
+            "Hidden singles should match expected moves for this puzzle"
+        );
+
+        // Verify all moves are valid hidden singles.
         for mov in hidden_singles.iter() {
+            // Verify technique is correct
+            assert_eq!(mov.technique, "hidden_single");
+
+            // Verify value is in valid range.
             assert!(
                 mov.value.get() >= 1 && mov.value.get() <= 9,
-                "Move value should be in range 1-9"
+                "Move value {} should be in range 1-9",
+                mov.value.get()
             );
+
+            // Verify cell index is valid.
             assert!(
                 mov.index < 81,
-                "Move index should be in range 0-80"
+                "Move index {} should be in range 0-80",
+                mov.index
             );
+
+            // Verify the move is possible on the board.
             assert!(
                 board.is_value_possible(mov.index, mov.value.get()),
-                "Move should be possible on the board"
+                "Move at cell {} with value {} should be possible on the board",
+                mov.index,
+                mov.value.get()
+            );
+
+            // Verify it's not a naked single (cell should have multiple possibilities).
+            let possible_count = board.count_possible(mov.index);
+            assert!(
+                possible_count > 1,
+                "Cell {} should have multiple possibilities (has {}), not be a naked single",
+                mov.index,
+                possible_count
+            );
+
+            // Verify the value is actually one of the possible values.
+            let possible_values = board.get_possible_values(mov.index);
+            assert!(
+                possible_values.contains(&mov.value.get()),
+                "Value {} should be in possible values {:?} for cell {}",
+                mov.value.get(),
+                possible_values,
+                mov.index
+            );
+
+            // Verify it's truly a hidden single: this value can only go in this cell
+            // in at least one zone containing this cell.
+            let mut found_zone_with_unique_placement = false;
+
+            for &zone_index in &metadata.zones_for_cell[mov.index] {
+                let zone = &metadata.zones[zone_index];
+                let mut cells_where_value_possible = Vec::new();
+
+                for &cell_index in zone {
+                    if board.get_value(cell_index).is_none()
+                        && board.is_value_possible(cell_index, mov.value.get())
+                    {
+                        cells_where_value_possible.push(cell_index);
+                    }
+                }
+
+                // Check if this zone has the value constrained to only this cell
+                if cells_where_value_possible.len() == 1 {
+                    assert_eq!(
+                        cells_where_value_possible[0], mov.index,
+                        "The only cell where value {} is possible in zone {} should be cell {}",
+                        mov.value.get(),
+                        zone_index,
+                        mov.index
+                    );
+                    
+                    found_zone_with_unique_placement = true;
+                    break;
+                }
+            }
+
+            assert!(
+                found_zone_with_unique_placement,
+                "Hidden single at cell {} with value {} should have at least one zone where it's the only possible placement",
+                mov.index,
+                mov.value.get()
             );
         }
     }

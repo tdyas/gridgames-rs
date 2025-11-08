@@ -93,10 +93,34 @@ mod tests {
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
 
-        // There should be at least one single in this position
-        assert!(!moves.is_empty());
+        // This puzzle should have at least one naked single
+        assert!(
+            !moves.is_empty(),
+            "Puzzle should have at least one naked single"
+        );
+
+        // Verify all moves are valid naked singles
         for mov in &moves {
             assert_eq!(mov.technique, "single");
+            assert!(
+                board.is_value_possible(mov.index, mov.value.get()),
+                "Move at cell {} with value {} should be possible on the board",
+                mov.index,
+                mov.value.get()
+            );
+            let possible = board.get_possible_values(mov.index);
+            assert_eq!(
+                possible.len(),
+                1,
+                "Cell {} should only have one possible value, but has: {:?}",
+                mov.index,
+                possible
+            );
+            assert_eq!(
+                possible[0],
+                mov.value.get(),
+                "The only possible value should match the move"
+            );
         }
     }
 }
