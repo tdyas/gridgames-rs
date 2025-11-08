@@ -6,5 +6,10 @@
 #![deny(warnings)]
 #![allow(dead_code)]
 
+pub mod board;
 pub mod dlx;
 pub mod sudoku;
+
+// Re-export main types for convenience
+pub use board::{Board, SolverMove, SR_FOUND_SOLUTION, SR_NO_SOLUTION};
+pub use sudoku::{SudokuBoard, ZoneMetadata};
