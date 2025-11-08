@@ -11,5 +11,5 @@ pub mod dlx;
 pub mod sudoku;
 
 // Re-export main types for convenience
-pub use board::{Board, SR_FOUND_SOLUTION, SR_NO_SOLUTION, SolverMove};
+pub use board::{Board, FindResult, SolverMove};
 pub use sudoku::{SudokuBoard, ZoneMetadata};

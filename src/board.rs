@@ -9,11 +9,16 @@ use std::sync::Arc;
 
 use crate::sudoku::{SudokuBoard, ZoneMetadata};
 
-/// Return value from find_index_with_least_possibilities() indicating board is solved
-pub const SR_FOUND_SOLUTION: i32 = -1;
-
-/// Return value from find_index_with_least_possibilities() indicating contradiction
-pub const SR_NO_SOLUTION: i32 = -2;
+/// Result from searching for the cell with the least possibilities
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FindResult {
+    /// Found a cell with the given index and possibility count
+    Found(usize),
+    /// Board is completely solved (all cells filled)
+    Solved,
+    /// Board has a contradiction (unsolvable state)
+    Contradiction,
+}
 
 /// Represents a single solving move/step
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -247,36 +252,36 @@ impl Board {
 
     /// Finds the empty cell with the fewest possible values (best branching heuristic)
     /// Returns:
-    /// - SR_FOUND_SOLUTION (-1) if the board is solved (all cells filled)
-    /// - SR_NO_SOLUTION (-2) if the board is unsolvable (contradiction detected)
-    /// - Cell index (>= 0) otherwise
-    pub fn find_index_with_least_possibilities(&self) -> i32 {
+    /// - `FindResult::Solved` if the board is completely solved
+    /// - `FindResult::Contradiction` if the board has an unsolvable contradiction
+    /// - `FindResult::Found(index)` with the cell index having the fewest possibilities
+    pub fn find_index_with_least_possibilities(&self) -> FindResult {
         if self.num_set_cells == self.metadata.num_cells {
-            return SR_FOUND_SOLUTION;
+            return FindResult::Solved;
         }
 
-        let mut least_index = SR_NO_SOLUTION;
+        let mut least_index: Option<usize> = None;
         let mut least_count = u32::MAX;
 
         for (index, &poss) in self.possible.iter().enumerate() {
             if self.values[index].is_none() {
                 let count = poss.count_ones();
                 if count == 0 {
-                    return SR_NO_SOLUTION; // Contradiction found
+                    return FindResult::Contradiction; // Contradiction found
                 }
                 if count < least_count {
                     least_count = count;
-                    least_index = index as i32;
+                    least_index = Some(index);
                 }
             }
         }
 
-        least_index
+        least_index.map(FindResult::Found).unwrap_or(FindResult::Contradiction)
     }
 
     /// Checks if the board is solved (all cells filled with no contradictions)
     pub fn is_solved(&self) -> bool {
-        self.find_index_with_least_possibilities() == SR_FOUND_SOLUTION
+        matches!(self.find_index_with_least_possibilities(), FindResult::Solved)
     }
 
     /// Checks if the board has a contradiction (unsolvable state)
@@ -644,8 +649,8 @@ mod tests {
         let mut board = Board::new(metadata.clone());
 
         // Empty board - all cells have 9 possibilities
-        let index = board.find_index_with_least_possibilities();
-        assert!(index >= 0); // Should return some cell
+        let result = board.find_index_with_least_possibilities();
+        assert!(matches!(result, FindResult::Found(_))); // Should return some cell
 
         // Fill row 0 except cell 0
         for col in 1..9 {
@@ -657,8 +662,8 @@ mod tests {
         let count = board.count_possible(0);
         assert_eq!(count, 1); // Only value 9 is possible
 
-        let index = board.find_index_with_least_possibilities();
-        assert_eq!(index, 0); // Cell 0 has the fewest possibilities
+        let result = board.find_index_with_least_possibilities();
+        assert_eq!(result, FindResult::Found(0)); // Cell 0 has the fewest possibilities
     }
 
     #[test]
@@ -677,8 +682,8 @@ mod tests {
             board.set_value(idx, val).unwrap();
         }
 
-        let index = board.find_index_with_least_possibilities();
-        assert_eq!(index, SR_FOUND_SOLUTION);
+        let result = board.find_index_with_least_possibilities();
+        assert_eq!(result, FindResult::Solved);
         assert!(board.is_solved());
     }
 
@@ -708,8 +713,8 @@ mod tests {
 
         // Check if we created a contradiction
         if board.has_contradiction() {
-            let index = board.find_index_with_least_possibilities();
-            assert_eq!(index, SR_NO_SOLUTION);
+            let result = board.find_index_with_least_possibilities();
+            assert_eq!(result, FindResult::Contradiction);
         }
     }
 
