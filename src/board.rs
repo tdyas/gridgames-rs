@@ -64,7 +64,8 @@ pub enum FindResult {
 
 impl Board {
     /// Creates a new empty board with the given zone graph.
-    pub fn new(metadata: Arc<ZoneMetadata>) -> Self {
+    pub fn new(metadata: ZoneMetadata) -> Self {
+        let metadata = Arc::new(metadata);
         let num_cells = metadata.num_cells;
         let num_zones = metadata.zones.len();
         let all_values_mask = (1 << metadata.num_values) - 1;
@@ -92,7 +93,7 @@ impl Board {
     /// # Panics
     /// Panics if the length of `values` does not match `metadata.num_cells`, or if any
     /// value would create an invalid board state.
-    pub fn from_values(metadata: Arc<ZoneMetadata>, values: &[Option<u8>]) -> Result<Self, String> {
+    pub fn from_values(metadata: ZoneMetadata, values: &[Option<u8>]) -> Result<Self, String> {
         assert_eq!(
             values.len(),
             metadata.num_cells,
@@ -369,7 +370,7 @@ impl Board {
     /// Creates a Board from a SudokuBoard (9x9 specific)
     pub fn from_sudoku_board(
         board: &SudokuBoard,
-        metadata: Arc<ZoneMetadata>,
+        metadata: ZoneMetadata,
     ) -> Result<Board, String> {
         if metadata.num_cells != 81 {
             return Err("SudokuBoard requires 81-cell metadata".to_string());
@@ -456,14 +457,14 @@ mod tests {
     use super::*;
     use crate::sudoku::SudokuGraph;
 
-    fn make_sudoku_metadata() -> Arc<ZoneMetadata> {
-        Arc::new(SudokuGraph::new().metadata)
+    fn make_sudoku_metadata() -> ZoneMetadata {
+        SudokuGraph::new().metadata
     }
 
     #[test]
     fn test_new_board() {
         let metadata = make_sudoku_metadata();
-        let board = Board::new(metadata.clone());
+        let board = Board::new(metadata);
 
         assert_eq!(board.num_cells(), 81);
         assert_eq!(board.num_values(), 9);
@@ -486,7 +487,7 @@ mod tests {
     #[test]
     fn test_set_value_basic() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Set cell 0 (row 0, col 0) to value 5.
         assert!(board.set_value(0, 5).is_ok());
@@ -514,7 +515,7 @@ mod tests {
     #[test]
     fn test_set_value_constraint_propagation() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Fill the first row with values 1-9
         for col in 0..9 {
@@ -535,7 +536,7 @@ mod tests {
     #[test]
     fn test_set_value_invalid_index() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         let result = board.set_value(100, 5);
         assert!(result.is_err());
@@ -545,7 +546,7 @@ mod tests {
     #[test]
     fn test_set_value_invalid_value() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Value 0 is invalid
         let result = board.set_value(0, 0);
@@ -561,7 +562,7 @@ mod tests {
     #[test]
     fn test_set_value_impossible() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Set cell 0 to value 5
         board.set_value(0, 5).unwrap();
@@ -575,7 +576,7 @@ mod tests {
     #[test]
     fn test_reset_value() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Set cell 0 to value 5
         board.set_value(0, 5).unwrap();
@@ -605,7 +606,7 @@ mod tests {
         values[1] = Some(3);
         values[9] = Some(7);
 
-        let board = Board::from_values(metadata.clone(), &values).unwrap();
+        let board = Board::from_values(metadata, &values).unwrap();
 
         assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.get_value(1), Some(3));
@@ -629,7 +630,7 @@ mod tests {
     #[test]
     fn test_get_possible_values() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Initially, all values 1-9 should be possible
         let possible = board.get_possible_values(0);
@@ -646,7 +647,7 @@ mod tests {
     #[test]
     fn test_find_index_with_least_possibilities() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Empty board - all cells have 9 possibilities
         let result = board.find_index_with_least_possibilities();
@@ -669,7 +670,7 @@ mod tests {
     #[test]
     fn test_find_index_solved() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Fill entire board with a valid Sudoku solution
         let solution = vec![
@@ -690,7 +691,7 @@ mod tests {
     #[test]
     fn test_find_index_contradiction() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Create a contradiction by filling row 0 with 1-8
         for col in 0..8 {
@@ -721,7 +722,7 @@ mod tests {
     #[test]
     fn test_stats() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         assert_eq!(board.get_stat("singles"), 0);
 
@@ -740,7 +741,7 @@ mod tests {
     #[test]
     fn test_moves() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         assert_eq!(board.get_moves().len(), 0);
 
@@ -763,7 +764,7 @@ mod tests {
     #[test]
     fn test_clone() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         board.set_value(0, 5).unwrap();
         board.inc_stat("test");
@@ -786,7 +787,7 @@ mod tests {
         sudoku.set_value(10, Some(7)).unwrap();
 
         // Convert to Board
-        let board = Board::from_sudoku_board(&sudoku, metadata.clone()).unwrap();
+        let board = Board::from_sudoku_board(&sudoku, metadata).unwrap();
         assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.get_value(1), Some(3));
         assert_eq!(board.get_value(10), Some(7));
@@ -803,7 +804,7 @@ mod tests {
     #[test]
     fn test_zone_counts() {
         let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata.clone());
+        let mut board = Board::new(metadata);
 
         // Initially all zones should have 9 unfilled cells
         // Sudoku has 27 zones (9 rows + 9 columns + 9 boxes)
