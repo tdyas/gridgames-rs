@@ -88,14 +88,18 @@ impl Board {
 
     /// Creates a board from initial cell values.
     /// Values should be None for empty, Some(v) for filled cells with value v (1-N)
+    ///
+    /// # Panics
+    /// Panics if the length of `values` does not match `metadata.num_cells`, or if any
+    /// value would create an invalid board state.
     pub fn from_values(metadata: Arc<ZoneMetadata>, values: &[Option<u8>]) -> Result<Self, String> {
-        if values.len() != metadata.num_cells {
-            return Err(format!(
-                "Expected {} values, got {}",
-                metadata.num_cells,
-                values.len()
-            ));
-        }
+        assert_eq!(
+            values.len(),
+            metadata.num_cells,
+            "Expected {} values, got {}",
+            metadata.num_cells,
+            values.len()
+        );
 
         let mut board = Self::new(metadata);
         for (index, &value) in values.iter().enumerate() {
@@ -614,13 +618,12 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Expected 81 values, got 50")]
     fn test_from_values_wrong_length() {
         let metadata = make_sudoku_metadata();
         let values = vec![None; 50]; // Wrong length
 
-        let result = Board::from_values(metadata, &values);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Expected 81"));
+        let _ = Board::from_values(metadata, &values);
     }
 
     #[test]
