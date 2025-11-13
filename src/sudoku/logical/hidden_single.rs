@@ -131,7 +131,10 @@ mod tests {
         assert!(
             move_9_in_cell_1.is_some(),
             "Should find hidden single: value 9 at cell 1 in box 0. Found moves: {:?}",
-            moves.iter().filter(|m| m.technique == "hidden_single").collect::<Vec<_>>()
+            moves
+                .iter()
+                .filter(|m| m.technique == "hidden_single")
+                .collect::<Vec<_>>()
         );
         assert_eq!(move_9_in_cell_1.unwrap().technique, "hidden_single");
     }
@@ -282,13 +285,14 @@ mod tests {
                 // Check if this zone has the value constrained to only this cell
                 if cells_where_value_possible.len() == 1 {
                     assert_eq!(
-                        cells_where_value_possible[0], mov.index,
+                        cells_where_value_possible[0],
+                        mov.index,
                         "The only cell where value {} is possible in zone {} should be cell {}",
                         mov.value.get(),
                         zone_index,
                         mov.index
                     );
-                    
+
                     found_zone_with_unique_placement = true;
                     break;
                 }

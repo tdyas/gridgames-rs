@@ -68,7 +68,6 @@ pub enum FindResult {
     Contradiction,
 }
 
-
 impl Board {
     /// Creates a new empty board with the given zone graph.
     pub fn new(metadata: ZoneMetadata) -> Self {
@@ -285,12 +284,17 @@ impl Board {
             }
         }
 
-        least_index.map(FindResult::Found).unwrap_or(FindResult::Contradiction)
+        least_index
+            .map(FindResult::Found)
+            .unwrap_or(FindResult::Contradiction)
     }
 
     /// Checks if the board is solved (all cells filled with no contradictions)
     pub fn is_solved(&self) -> bool {
-        matches!(self.find_index_with_least_possibilities(), FindResult::Solved)
+        matches!(
+            self.find_index_with_least_possibilities(),
+            FindResult::Solved
+        )
     }
 
     /// Checks if the board has a contradiction (unsolvable state)
@@ -375,10 +379,7 @@ impl Board {
     // ===== SudokuBoard Integration =====
 
     /// Creates a Board from a SudokuBoard (9x9 specific)
-    pub fn from_sudoku_board(
-        board: &SudokuBoard,
-        metadata: ZoneMetadata,
-    ) -> Result<Board, String> {
+    pub fn from_sudoku_board(board: &SudokuBoard, metadata: ZoneMetadata) -> Result<Board, String> {
         if metadata.num_cells != 81 {
             return Err("SudokuBoard requires 81-cell metadata".to_string());
         }

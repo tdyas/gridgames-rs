@@ -36,6 +36,8 @@ impl SolveStrategy for SinglePossibleSolveStrategy {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
     use crate::sudoku::{SudokuBoard, SudokuGraph};
 
@@ -97,6 +99,14 @@ mod tests {
         assert!(
             !moves.is_empty(),
             "Puzzle should have at least one naked single"
+        );
+
+        let actual: BTreeSet<(usize, u8)> =
+            moves.iter().map(|m| (m.index, m.value.get())).collect();
+        let expected: BTreeSet<(usize, u8)> = BTreeSet::from([(59, 7), (62, 4), (70, 3)]);
+        assert_eq!(
+            actual, expected,
+            "Should find the expected naked singles for this puzzle"
         );
 
         // Verify all moves are valid naked singles
