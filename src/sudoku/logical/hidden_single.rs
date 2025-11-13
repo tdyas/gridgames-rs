@@ -37,16 +37,15 @@ impl SolveStrategy for HiddenSingleSolveStrategy {
 
                     // Only record if this cell has multiple possibilities
                     // (if it has only one possibility, it's a naked single, not hidden).
-                    if board.count_possible(index) > 1 {
-                        if let Some(nz_value) = NonZeroU8::new(value) {
-                            if seen_moves.insert((index, value)) {
-                                moves.push(SolverMove {
-                                    index,
-                                    value: nz_value,
-                                    technique: "hidden_single".to_string(),
-                                });
-                            }
-                        }
+                    if board.count_possible(index) > 1
+                        && let Some(nz_value) = NonZeroU8::new(value)
+                        && seen_moves.insert((index, value))
+                    {
+                        moves.push(SolverMove {
+                            index,
+                            value: nz_value,
+                            technique: "hidden_single".to_string(),
+                        });
                     }
                 }
             }
