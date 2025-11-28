@@ -10,6 +10,7 @@ use std::{borrow::Cow, collections::HashSet, fmt, num::NonZeroU8, str::FromStr};
 
 use crate::dlx::{Dlx, SolveAction};
 
+pub mod generate;
 pub mod logical;
 
 /// Metadata describing the constraint graph for a Sudoku-like puzzle.
