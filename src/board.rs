@@ -11,17 +11,22 @@ use crate::sudoku::{SudokuBoard, ZoneMetadata};
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
-pub trait SolveStrategy {
+pub trait SolveStrategy<GD: GameDefinition> {
     /// Return a set of possible moves given the represented strategy.
-    fn compute_solver_moves(board: &Board) -> Vec<SolverMove>;
+    fn compute_solver_moves(board: &Board<GD>) -> Vec<SolverMove>;
+}
+
+trait GameDefinition {
+    /// Number of cells used for the game.
+    const NUM_CELLS: usize;
 }
 
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
 #[derive(Clone, Debug)]
-pub struct Board {
+pub struct Board<GD: GameDefinition> {
     /// Reference to the constraint graph defining game rules
-    metadata: Arc<ZoneMetadata>,
+    metadata: Arc<GD>,
 
     /// Cell values: None = empty, Some(v) = filled with value v (1-N)
     values: Vec<Option<NonZeroU8>>,
@@ -68,7 +73,7 @@ pub enum FindResult {
     Contradiction,
 }
 
-impl Board {
+impl<GD: GameDefinition> Board<GD> {
     /// Creates a new empty board with the given zone graph.
     pub fn new(metadata: ZoneMetadata) -> Self {
         let metadata = Arc::new(metadata);
