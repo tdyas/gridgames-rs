@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+env_logger = "0.11"
 log = "0.4"
 clap = { version = "4.5", features = ["derive"] }
+rand = "0.9"
 
 [lints.clippy]
 needless_range_loop = "allow"
