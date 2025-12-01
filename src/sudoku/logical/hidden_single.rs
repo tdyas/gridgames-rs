@@ -66,21 +66,17 @@ mod tests {
     use super::*;
     use crate::sudoku::SudokuBoard;
 
-    fn make_sudoku_board() -> SudokuBoard {
-        SudokuBoard::new()
-    }
-
     #[test]
     fn test_hidden_single_empty_board() {
         // An empty board has no hidden singles.
-        let board = make_sudoku_board();
+        let board = SudokuBoard::new();
         let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
         assert_eq!(moves.len(), 0);
     }
 
     #[test]
     fn test_hidden_single_in_row() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Set up a situation where value 9 can only go in one cell in row 0
         // Fill cells in row 0 with values 1-8, leaving cells 0 and 8 empty
@@ -110,7 +106,7 @@ mod tests {
         // Fill most of box 0, leaving only cells 0 and 1
         // Then eliminate 9 from cell 0
 
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Fill box 0 (cells: 0, 1, 2, 9, 10, 11, 18, 19, 20) except cells 0 and 1
         board.set_value(2, 1).unwrap();
@@ -141,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_hidden_single_vs_naked_single() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Create a naked single (cell with only one possibility)
         // Fill row 0 except cell 0

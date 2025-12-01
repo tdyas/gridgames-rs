@@ -46,21 +46,17 @@ mod tests {
     use super::*;
     use crate::sudoku::SudokuBoard;
 
-    fn make_sudoku_board() -> SudokuBoard {
-        SudokuBoard::new()
-    }
-
     #[test]
     fn test_single_possible_empty_board() {
         // Empty board has no singles (all cells have 9 possibilities).
-        let board = make_sudoku_board();
+        let board = SudokuBoard::new();
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
         assert_eq!(moves.len(), 0);
     }
 
     #[test]
     fn test_single_possible_finds_naked_single() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Fill row 0 except cell 0, leaving only one possibility (9) for cell 0.
         for col in 1..9 {

@@ -504,13 +504,9 @@ mod tests {
     use super::*;
     use crate::sudoku::SudokuBoard;
 
-    fn make_sudoku_board() -> SudokuBoard {
-        SudokuBoard::new()
-    }
-
     #[test]
     fn test_new_board() {
-        let board = make_sudoku_board();
+        let board = SudokuBoard::new();
 
         assert_eq!(board.num_cells(), 81);
         assert_eq!(board.num_values(), 9);
@@ -532,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_set_value_basic() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Set cell 0 (row 0, col 0) to value 5.
         assert!(board.set_value(0, 5).is_ok());
@@ -559,7 +555,7 @@ mod tests {
 
     #[test]
     fn test_set_value_constraint_propagation() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Fill the first row with values 1-9
         for col in 0..9 {
@@ -579,7 +575,7 @@ mod tests {
 
     #[test]
     fn test_set_value_invalid_index() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         let result = board.set_value(100, 5);
         assert!(result.is_err());
@@ -588,7 +584,7 @@ mod tests {
 
     #[test]
     fn test_set_value_invalid_value() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Value 0 is invalid
         let result = board.set_value(0, 0);
@@ -603,7 +599,7 @@ mod tests {
 
     #[test]
     fn test_set_value_impossible() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
         board.set_value(0, 5).unwrap();
@@ -616,7 +612,7 @@ mod tests {
 
     #[test]
     fn test_reset_value() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
         board.set_value(0, 5).unwrap();
@@ -665,7 +661,7 @@ mod tests {
 
     #[test]
     fn test_get_possible_values() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Initially, all values 1-9 should be possible
         let possible = board.get_possible_values(0);
@@ -681,7 +677,7 @@ mod tests {
 
     #[test]
     fn test_find_index_with_least_possibilities() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Empty board - all cells have 9 possibilities
         let result = board.find_index_with_least_possibilities();
@@ -703,7 +699,7 @@ mod tests {
 
     #[test]
     fn test_find_index_solved() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Fill entire board with a valid Sudoku solution
         let solution = vec![
@@ -723,7 +719,7 @@ mod tests {
 
     #[test]
     fn test_find_index_contradiction() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Create a contradiction by filling row 0 with 1-8
         for col in 0..8 {
@@ -753,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_stats() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         assert_eq!(board.get_stat("singles"), 0);
 
@@ -771,7 +767,7 @@ mod tests {
 
     #[test]
     fn test_moves() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         assert_eq!(board.get_moves().len(), 0);
 
@@ -793,7 +789,7 @@ mod tests {
 
     #[test]
     fn test_clone() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         board.set_value(0, 5).unwrap();
         board.inc_stat("test");
@@ -807,7 +803,7 @@ mod tests {
 
     #[test]
     fn test_zone_counts() {
-        let mut board = make_sudoku_board();
+        let mut board = SudokuBoard::new();
 
         // Initially all zones should have 9 unfilled cells
         // Sudoku has 27 zones (9 rows + 9 columns + 9 boxes)
