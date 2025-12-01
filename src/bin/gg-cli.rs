@@ -1,6 +1,6 @@
 use std::process;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use gridgames_rs::{
     gamedef::GameDefinition,
     sudoku::{
@@ -48,11 +48,20 @@ struct SudokuSolveArgs {
 
     /// Maximum number of solutions to return (default: 2 per library API)
     #[arg(long)]
-    max_solutions: Option<u32>,
+    max_solutions: Option<usize>,
 
     /// Print solution boards with row/column/box separators.
     #[arg(long)]
     show_zones: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
+enum OutputFormat {
+    // Pretty print the Sudoku puzzle.
+    PrettyPrint,
+
+    // Output a JSON blob with the Sudoku puzzle and the solved version.
+    Json,
 }
 
 #[derive(Args)]
@@ -61,9 +70,17 @@ struct SudokuGenerateArgs {
     #[arg(long)]
     show_solved_board: bool,
 
-    /// Number of clues to remove from a solved board (must be < 81)
-    #[arg(long, value_name = "COUNT", required = true)]
-    max_values_to_remove: u32,
+    /// Number of clues to remove from a solved board (must be < 81).
+    #[arg(short = 'v', long, value_name = "COUNT", required = true)]
+    max_values_to_remove: usize,
+
+    /// Use a precomputed solved board instead of computing a new one.
+    #[arg(long)]
+    solved_board: Option<String>,
+
+    /// Output format for displaying the computed puzzle.
+    #[arg(short, long, value_enum, default_value_t = OutputFormat::PrettyPrint)]
+    output: OutputFormat,
 }
 
 fn main() {
@@ -100,7 +117,7 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
             if value == 0 {
                 Err("max-solutions must be greater than zero".to_string())
             } else {
-                Ok(value as usize)
+                Ok(value)
             }
         })
         .transpose()?;
@@ -125,19 +142,36 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
 }
 
 fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
+    let mut rng = rand::rng();
+
     let SudokuGenerateArgs {
         show_solved_board,
         max_values_to_remove,
+        solved_board,
+        output,
     } = args;
 
-    let mut rng = rand::rng();
-    let solved_board = generate_solved_sudoku_board(&mut rng)
-        .map_err(|err| format!("Error while generating solved board: {err:?}"))?;
+    let solved_board = if let Some(solved_board) = solved_board {
+        // from_puzzle_str will fail if the caller provides an impossible board.
+        let maybe_solved_board = SudokuBoard::from_puzzle_str(&solved_board)
+            .map_err(|err| format!("Error while converting provided solved board: {err:?}"))?;
+        if maybe_solved_board
+            .get_all_values()
+            .iter()
+            .any(|v| v.is_none())
+        {
+            return Err(("The provided solved board must be completely filled in.").to_string());
+        }
+        maybe_solved_board
+    } else {
+        generate_solved_sudoku_board(&mut rng)
+            .map_err(|err| format!("Error while generating a new solved board: {err:?}"))?
+    };
+
     if show_solved_board {
         println!("{}", format_board_with_zones(&solved_board));
     }
 
-    let max_values_to_remove = max_values_to_remove as usize;
     if max_values_to_remove >= solved_board.num_cells() {
         return Err(format!(
             "clues-to-remove must be between 0 and {}",
@@ -145,17 +179,29 @@ fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
         ));
     }
 
-    let puzzle = remove_given_values_from_board(solved_board, max_values_to_remove, &mut rng)
-        .map_err(|err| format!("Error while removoing values from board: {err:?}"))?;
+    let puzzle =
+        remove_given_values_from_board(solved_board.clone(), max_values_to_remove, &mut rng)
+            .map_err(|err| format!("Error while removoing values from board: {err:?}"))?;
 
     let actual_num_clues_remaining = puzzle.given_indices().count();
 
-    println!(
-        "Generated puzzle (removed {} clues, {} given values):",
-        puzzle.num_cells() - actual_num_clues_remaining,
-        actual_num_clues_remaining,
-    );
-    println!("{}", format_board_with_zones(&puzzle));
+    match output {
+        OutputFormat::PrettyPrint => {
+            println!(
+                "Generated puzzle (removed {} clues, {} given values):",
+                puzzle.num_cells() - actual_num_clues_remaining,
+                actual_num_clues_remaining,
+            );
+            println!("{}", format_board_with_zones(&puzzle));
+        }
+        OutputFormat::Json => {
+            println!(
+                "{{\"solved\":\"{}\",\"puzzle\":\"{}\"}}",
+                solved_board.to_puzzle_string(),
+                puzzle.to_puzzle_string()
+            )
+        }
+    }
 
     Ok(())
 }
