@@ -1,14 +1,19 @@
 //! Single (naked single) solving strategy.
 
-use crate::board::{Board, SolveStrategy, SolverMove};
+use crate::{
+    board::{Board, SolveStrategy, SolverMove},
+    gamedef::GameDefinition,
+};
 use std::num::NonZeroU8;
 
 /// Strategy that finds cells with only one possible value (naked singles).
 pub struct SinglePossibleSolveStrategy;
 
-impl SolveStrategy for SinglePossibleSolveStrategy {
+impl<GD: GameDefinition, const CAPACITY: usize> SolveStrategy<GD, CAPACITY>
+    for SinglePossibleSolveStrategy
+{
     /// Finds all cells that have exactly one possible value.
-    fn compute_solver_moves(board: &Board) -> Vec<SolverMove> {
+    fn compute_solver_moves(board: &Board<GD, CAPACITY>) -> Vec<SolverMove> {
         let mut moves = Vec::new();
 
         for index in 0..board.num_cells() {
@@ -39,35 +44,32 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::sudoku::{SudokuBoard, SudokuGraph};
+    use crate::sudoku::{SudokuBoard, SudokuGameDefinition};
 
-    fn make_sudoku_metadata() -> crate::sudoku::ZoneMetadata {
-        SudokuGraph::new().metadata
+    fn make_sudoku_board() -> SudokuBoard {
+        Board::new(SudokuGameDefinition::new())
     }
 
     #[test]
     fn test_single_possible_empty_board() {
-        let metadata = make_sudoku_metadata();
-        let board = Board::new(metadata);
-
-        // Empty board has no singles (all cells have 9 possibilities)
+        // Empty board has no singles (all cells have 9 possibilities).
+        let board = make_sudoku_board;
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
         assert_eq!(moves.len(), 0);
     }
 
     #[test]
     fn test_single_possible_finds_naked_single() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = make_sudoku_board();
 
-        // Fill row 0 except cell 0, leaving only one possibility (9) for cell 0
+        // Fill row 0 except cell 0, leaving only one possibility (9) for cell 0.
         for col in 1..9 {
             board.set_value(col, col as u8).unwrap();
         }
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
 
-        // Should find cell 0 with value 9
+        // Should find cell 0 with value 9.
         assert_eq!(moves.len(), 1);
         assert_eq!(moves[0].index, 0);
         assert_eq!(moves[0].value.get(), 9);
@@ -76,8 +78,6 @@ mod tests {
 
     #[test]
     fn test_single_possible_multiple_singles() {
-        let metadata = make_sudoku_metadata();
-
         // Create a puzzle with multiple naked singles
         let puzzle_str = "\
             53.......\
@@ -90,8 +90,7 @@ mod tests {
             ...419..5\
             ....8..79";
 
-        let sudoku: SudokuBoard = puzzle_str.parse().unwrap();
-        let board = Board::from_sudoku_board(&sudoku, metadata).unwrap();
+        let board = Board::from_str(SudokuGameDefinition::new(), puzzle_str).unwrap();
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
 

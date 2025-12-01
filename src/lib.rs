@@ -10,7 +10,3 @@ pub mod board;
 pub mod dlx;
 pub mod gamedef;
 pub mod sudoku;
-
-// Re-export main types for convenience
-pub use board::{Board, FindResult, SolveStrategy, SolverMove};
-pub use sudoku::{SudokuBoard, ZoneMetadata};

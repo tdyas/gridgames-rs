@@ -7,10 +7,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU8;
 use std::sync::Arc;
 
-use crate::{
-    gamedef::GameDefinition,
-    sudoku::{SudokuBoard, ZoneMetadata},
-};
+use crate::gamedef::GameDefinition;
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
@@ -121,6 +118,29 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
         Ok(board)
     }
 
+    /// Creates a board from a puzzle string.
+    pub fn from_str(gamedef: GD, values_str: &str) -> Result<Self, String> {
+        assert_eq!(
+            values_str.len(),
+            gamedef.num_cells(),
+            "Expected {} length string with values, got {} length instead",
+            gamedef.num_cells(),
+            values_str.len()
+        );
+        let mut board = Self::new(gamedef);
+        for (index, ch) in values_str.chars().enumerate() {
+            if ch.is_ascii_digit() {
+                let value = (ch as u8) - b'0';
+                if value > 0 {
+                    board.set_value(index, value)?;
+                }
+            } else if ch != '.' && !ch.is_whitespace() {
+                return Err(format!("Expected a digit or '.', instead got `{ch}`"));
+            }
+        }
+        Ok(board)
+    }
+
     /// Sets a cell to a specific value, propagating constraints to neighbors.
     /// Returns an error if the value is invalid or creates a contradiction.
     pub fn set_value(&mut self, index: usize, value: u8) -> Result<(), String> {
@@ -150,7 +170,11 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
             self.num_set_cells += 1;
 
             // Update zone counts
-            for &zone_index in self.gamedef.get_zones_for_cell(index)? {
+            for &zone_index in self
+                .gamedef
+                .get_zones_for_cell(index)
+                .map_err(|err| format!("set_value failed at index {index}{err:?}"))?
+            {
                 self.zone_counts[zone_index] -= 1;
             }
         }
@@ -255,7 +279,26 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
         let mask = self.get_possible(index);
         (0..self.gamedef.num_values())
             .filter(|&i| mask & (1 << i) != 0)
-            .map(|i| (i + 1) as u8)
+            .map(|i| i + 1)
+            .collect()
+    }
+
+    pub fn given_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.values
+            .iter()
+            .take(self.gamedef.num_cells())
+            .enumerate()
+            .filter_map(|(index, value)| value.map(|_| index))
+    }
+
+    pub fn to_puzzle_string(&self) -> String {
+        self.values
+            .iter()
+            .take(self.gamedef.num_cells())
+            .map(|value| match value {
+                None => '.',
+                Some(digit) => (b'0' + digit.get()) as char,
+            })
             .collect()
     }
 
@@ -354,28 +397,6 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
 
     // ===== Metadata Access =====
 
-    /// Gets the number of cells in the board
-    #[inline]
-    pub fn num_cells(&self) -> usize {
-        self.gamedef.num_cells()
-    }
-
-    /// Gets the number of possible values (1-N)
-    #[inline]
-    pub fn num_values(&self) -> usize {
-        self.gamedef.num_values() as usize // TODO: Fix this type.
-    }
-
-    /// Gets the number of filled cells
-    pub fn num_set_cells(&self) -> usize {
-        self.num_set_cells
-    }
-
-    /// Gets the constraint metadata (graph)
-    pub fn get_gamedef(&self) -> &Arc<GD> {
-        &self.gamedef
-    }
-
     /// Gets the count of unfilled cells in a specific zone
     pub fn zone_count(&self, zone_index: usize) -> usize {
         self.zone_counts.get(zone_index).copied().unwrap_or(0)
@@ -436,10 +457,50 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
     }
 }
 
+impl<GD: GameDefinition, const CAPACITY: usize> GameDefinition for Board<GD, CAPACITY> {
+    #[inline]
+    fn num_cells(&self) -> usize {
+        self.gamedef.num_cells()
+    }
+
+    #[inline]
+    fn num_values(&self) -> u8 {
+        self.gamedef.num_values()
+    }
+
+    #[inline]
+    fn num_zones(&self) -> usize {
+        self.gamedef.num_zones()
+    }
+
+    #[inline]
+    fn get_cells_for_zone(
+        &self,
+        zone_index: usize,
+    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+        self.gamedef.get_cells_for_zone(zone_index)
+    }
+
+    #[inline]
+    fn get_neighbors_for_cell(
+        &self,
+        cell_index: usize,
+    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+        self.gamedef.get_neighbors_for_cell(cell_index)
+    }
+
+    #[inline]
+    fn get_zones_for_cell(
+        &self,
+        cell_index: usize,
+    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+        self.gamedef.get_zones_for_cell(cell_index)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sudoku::SudokuGraph;
 
     fn make_sudoku_metadata() -> ZoneMetadata {
         SudokuGraph::new().metadata
