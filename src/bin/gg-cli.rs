@@ -152,8 +152,17 @@ fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
     } = args;
 
     let solved_board = if let Some(solved_board) = solved_board {
-        SudokuBoard::from_puzzle_str(&solved_board)
-            .map_err(|err| format!("Error while converting provided solved board: {err:?}"))?
+        // from_puzzle_str will fail if the caller provides an impossible board.
+        let maybe_solved_board = SudokuBoard::from_puzzle_str(&solved_board)
+            .map_err(|err| format!("Error while converting provided solved board: {err:?}"))?;
+        if maybe_solved_board
+            .get_all_values()
+            .iter()
+            .any(|v| v.is_none())
+        {
+            return Err(("The provided solved board must be completely filled in.").to_string());
+        }
+        maybe_solved_board
     } else {
         generate_solved_sudoku_board(&mut rng)
             .map_err(|err| format!("Error while generating a new solved board: {err:?}"))?
