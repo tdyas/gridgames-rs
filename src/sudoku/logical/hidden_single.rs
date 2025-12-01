@@ -9,11 +9,11 @@ use crate::gamedef::GameDefinition;
 /// Strategy that finds values that can only go in one cell within a zone (hidden singles).
 pub struct HiddenSingleSolveStrategy;
 
-impl<GD: GameDefinition + Default, const CAPACITY: usize> SolveStrategy<GD, CAPACITY>
+impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
     for HiddenSingleSolveStrategy
 {
     /// Finds all values that can only go in one cell within each zone.
-    fn compute_solver_moves(board: &Board<GD, CAPACITY>) -> Vec<SolverMove> {
+    fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove> {
         let mut moves = Vec::new();
         let mut seen_moves = HashSet::new();
 

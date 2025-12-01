@@ -11,23 +11,23 @@ use crate::gamedef::GameDefinition;
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
-pub trait SolveStrategy<GD: GameDefinition + Default, const CAPACITY: usize> {
+pub trait SolveStrategy<GD: GameDefinition + Default, const CAP: usize> {
     /// Return a set of possible moves given the represented strategy.
-    fn compute_solver_moves(board: &Board<GD, CAPACITY>) -> Vec<SolverMove>;
+    fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove>;
 }
 
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
 #[derive(Clone, Debug)]
-pub struct Board<GD: GameDefinition + Default, const CAPACITY: usize> {
+pub struct Board<GD: GameDefinition + Default, const CAP: usize> {
     /// Reference to the constraint graph defining game rules
     gamedef: Arc<GD>,
 
     /// Cell values: None = empty, Some(v) = filled with value v (1-N).
-    values: [Option<NonZeroU8>; CAPACITY],
+    values: [Option<NonZeroU8>; CAP],
 
     /// Bitmask of possible values per cell (bit i = value i+1 is possible)
-    possible: [u32; CAPACITY],
+    possible: [u32; CAP],
 
     /// Count of unfilled cells per zone
     zone_counts: Vec<usize>,
@@ -68,7 +68,7 @@ pub enum FindResult {
     Contradiction,
 }
 
-impl<GD: GameDefinition + Default, const CAPACITY: usize> Board<GD, CAPACITY> {
+impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     /// Creates a new empty board with the given zone graph.
     pub fn new() -> Self {
         let gamedef = GD::default();
@@ -86,8 +86,8 @@ impl<GD: GameDefinition + Default, const CAPACITY: usize> Board<GD, CAPACITY> {
 
         Board {
             gamedef: Arc::new(gamedef),
-            values: [None; CAPACITY],
-            possible: [all_values_mask; CAPACITY],
+            values: [None; CAP],
+            possible: [all_values_mask; CAP],
             zone_counts,
             num_set_cells: 0,
             stats: HashMap::new(),
@@ -458,7 +458,7 @@ impl<GD: GameDefinition + Default, const CAPACITY: usize> Board<GD, CAPACITY> {
     }
 }
 
-impl<GD: GameDefinition + Default, const CAPACITY: usize> GameDefinition for Board<GD, CAPACITY> {
+impl<GD: GameDefinition + Default, const CAP: usize> GameDefinition for Board<GD, CAP> {
     #[inline]
     fn num_cells(&self) -> usize {
         self.gamedef.num_cells()

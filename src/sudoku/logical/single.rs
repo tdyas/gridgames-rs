@@ -9,11 +9,11 @@ use std::num::NonZeroU8;
 /// Strategy that finds cells with only one possible value (naked singles).
 pub struct SinglePossibleSolveStrategy;
 
-impl<GD: GameDefinition + Default, const CAPACITY: usize> SolveStrategy<GD, CAPACITY>
+impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
     for SinglePossibleSolveStrategy
 {
     /// Finds all cells that have exactly one possible value.
-    fn compute_solver_moves(board: &Board<GD, CAPACITY>) -> Vec<SolverMove> {
+    fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove> {
         let mut moves = Vec::new();
 
         for index in 0..board.num_cells() {
