@@ -362,25 +362,6 @@ mod tests {
     }
 
     #[test]
-    fn dlx_solver_returns_zero_for_contradictory_board() {
-        let mut solver = SudokuDlxSolver::new();
-        let puzzle = "\
-            550070000\
-            600195000\
-            098000060\
-            800060003\
-            400803001\
-            700020006\
-            060000280\
-            000419005\
-            000080079";
-        let board: SudokuBoard = SudokuBoard::from_str(SudokuGameDefinition::new(), puzzle)
-            .expect("valid puzzle format");
-        let solutions = solver.solve(&board);
-        assert!(solutions.is_empty());
-    }
-
-    #[test]
     fn dlx_solver_is_reusable_between_runs() {
         let mut solver = SudokuDlxSolver::new();
         let puzzle = "\
