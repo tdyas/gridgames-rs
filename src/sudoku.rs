@@ -78,6 +78,12 @@ impl SudokuGameDefinition {
     }
 }
 
+impl Default for SudokuGameDefinition {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GameDefinition for SudokuGameDefinition {
     #[inline]
     fn num_cells(&self) -> usize {
@@ -284,7 +290,7 @@ mod tests {
 
     #[test]
     fn board_set_value_validates_input() {
-        let mut board = SudokuBoard::new(SudokuGameDefinition::new());
+        let mut board = SudokuBoard::new();
         assert!(board.set_value(10, 5).is_ok());
         assert_eq!(board.get_value(10), Some(5));
 

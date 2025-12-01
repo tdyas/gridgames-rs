@@ -11,7 +11,7 @@ use crate::gamedef::GameDefinition;
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
-pub trait SolveStrategy<GD: GameDefinition, const CAPACITY: usize> {
+pub trait SolveStrategy<GD: GameDefinition + Default, const CAPACITY: usize> {
     /// Return a set of possible moves given the represented strategy.
     fn compute_solver_moves(board: &Board<GD, CAPACITY>) -> Vec<SolverMove>;
 }
@@ -19,7 +19,7 @@ pub trait SolveStrategy<GD: GameDefinition, const CAPACITY: usize> {
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
 #[derive(Clone, Debug)]
-pub struct Board<GD: GameDefinition, const CAPACITY: usize> {
+pub struct Board<GD: GameDefinition + Default, const CAPACITY: usize> {
     /// Reference to the constraint graph defining game rules
     gamedef: Arc<GD>,
 
@@ -68,9 +68,10 @@ pub enum FindResult {
     Contradiction,
 }
 
-impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
+impl<GD: GameDefinition + Default, const CAPACITY: usize> Board<GD, CAPACITY> {
     /// Creates a new empty board with the given zone graph.
-    pub fn new(gamedef: GD) -> Self {
+    pub fn new() -> Self {
+        let gamedef = GD::default();
         let num_zones = gamedef.num_zones();
         let all_values_mask = (1 << gamedef.num_values()) - 1;
 
@@ -109,7 +110,7 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
             values.len()
         );
 
-        let mut board = Self::new(gamedef);
+        let mut board = Self::new();
         for (index, &value) in values.iter().enumerate() {
             if let Some(v) = value {
                 board.set_value(index, v)?;
@@ -127,7 +128,7 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
             gamedef.num_cells(),
             values_str.len()
         );
-        let mut board = Self::new(gamedef);
+        let mut board = Self::new();
         for (index, ch) in values_str.chars().enumerate() {
             if ch.is_ascii_digit() {
                 let value = (ch as u8) - b'0';
@@ -457,7 +458,7 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
     }
 }
 
-impl<GD: GameDefinition, const CAPACITY: usize> GameDefinition for Board<GD, CAPACITY> {
+impl<GD: GameDefinition + Default, const CAPACITY: usize> GameDefinition for Board<GD, CAPACITY> {
     #[inline]
     fn num_cells(&self) -> usize {
         self.gamedef.num_cells()
@@ -504,7 +505,7 @@ mod tests {
     use crate::sudoku::{SudokuBoard, SudokuGameDefinition};
 
     fn make_sudoku_board() -> SudokuBoard {
-        Board::new(SudokuGameDefinition::new())
+        SudokuBoard::new()
     }
 
     #[test]

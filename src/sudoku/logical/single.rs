@@ -9,7 +9,7 @@ use std::num::NonZeroU8;
 /// Strategy that finds cells with only one possible value (naked singles).
 pub struct SinglePossibleSolveStrategy;
 
-impl<GD: GameDefinition, const CAPACITY: usize> SolveStrategy<GD, CAPACITY>
+impl<GD: GameDefinition + Default, const CAPACITY: usize> SolveStrategy<GD, CAPACITY>
     for SinglePossibleSolveStrategy
 {
     /// Finds all cells that have exactly one possible value.
@@ -47,7 +47,7 @@ mod tests {
     use crate::sudoku::{SudokuBoard, SudokuGameDefinition};
 
     fn make_sudoku_board() -> SudokuBoard {
-        Board::new(SudokuGameDefinition::new())
+        SudokuBoard::new()
     }
 
     #[test]

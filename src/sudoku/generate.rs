@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use rand::{Rng, seq::SliceRandom};
 
-use super::{SudokuBoard, SudokuDlxSolver, SudokuGameDefinition};
+use super::{SudokuBoard, SudokuDlxSolver};
 use crate::gamedef::GameDefinition;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -22,7 +22,7 @@ pub fn generate_solved_sudoku_board<R: Rng>(
 ) -> Result<SudokuBoard, SudokuGenerateError> {
     let mut solver = SudokuDlxSolver::new();
 
-    let mut board = SudokuBoard::new(SudokuGameDefinition::new());
+    let mut board = SudokuBoard::new();
 
     // Shuffle the cell indexes so that the board is filled in a random order.
     let indexes = {

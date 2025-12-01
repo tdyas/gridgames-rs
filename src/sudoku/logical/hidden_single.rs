@@ -9,7 +9,7 @@ use crate::gamedef::GameDefinition;
 /// Strategy that finds values that can only go in one cell within a zone (hidden singles).
 pub struct HiddenSingleSolveStrategy;
 
-impl<GD: GameDefinition, const CAPACITY: usize> SolveStrategy<GD, CAPACITY>
+impl<GD: GameDefinition + Default, const CAPACITY: usize> SolveStrategy<GD, CAPACITY>
     for HiddenSingleSolveStrategy
 {
     /// Finds all values that can only go in one cell within each zone.
@@ -67,7 +67,7 @@ mod tests {
     use crate::sudoku::{SudokuBoard, SudokuGameDefinition};
 
     fn make_sudoku_board() -> SudokuBoard {
-        Board::new(SudokuGameDefinition::new())
+        SudokuBoard::new()
     }
 
     #[test]
