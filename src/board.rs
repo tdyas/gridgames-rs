@@ -87,7 +87,7 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
             gamedef: Arc::new(gamedef),
             values: [None; CAPACITY],
             possible: [all_values_mask; CAPACITY],
-            zone_counts: vec![],
+            zone_counts,
             num_set_cells: 0,
             stats: HashMap::new(),
             moves: Vec::new(),

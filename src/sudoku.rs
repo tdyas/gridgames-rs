@@ -201,9 +201,11 @@ impl SudokuDlxSolver {
             let mut solved = board.clone();
             for row_index in solution_rows {
                 let (cell_index, digit) = self.row_assignments[row_index];
-                solved
-                    .set_value(cell_index, digit)
-                    .expect("solver should only emit valid digits");
+                if solved.get_value(cell_index).is_none() {
+                    solved
+                        .set_value(cell_index, digit)
+                        .expect("solver should only emit valid digits");
+                }
             }
             solutions.push(solved);
 
@@ -293,22 +295,22 @@ mod tests {
         assert!(err.contains("out of bounds"));
 
         let err = board.set_value(0, 12).unwrap_err();
-        assert!(err.contains("outside the allowed range"));
+        assert!(err.contains("out of range"));
     }
 
     #[test]
     fn dlx_solver_solves_classic_puzzle() {
         let mut solver = SudokuDlxSolver::new();
         let puzzle = "\
-            530070000\
-            600195000\
-            098000060\
-            800060003\
-            400803001\
-            700020006\
-            060000280\
-            000419005\
-            000080079";
+            53..7....\
+            6..195...\
+            .98....6.\
+            8...6...3\
+            4..8.3..1\
+            7...2...6\
+            .6....28.\
+            ...419..5\
+            ....8..79";
         let board: SudokuBoard =
             SudokuBoard::from_str(SudokuGameDefinition::new(), puzzle).expect("valid puzzle");
         let solutions = solver.solve(&board);
