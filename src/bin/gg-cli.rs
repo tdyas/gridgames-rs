@@ -48,7 +48,7 @@ struct SudokuSolveArgs {
 
     /// Maximum number of solutions to return (default: 2 per library API)
     #[arg(long)]
-    max_solutions: Option<u32>,
+    max_solutions: Option<usize>,
 
     /// Print solution boards with row/column/box separators.
     #[arg(long)]
@@ -61,9 +61,13 @@ struct SudokuGenerateArgs {
     #[arg(long)]
     show_solved_board: bool,
 
-    /// Number of clues to remove from a solved board (must be < 81)
-    #[arg(long, value_name = "COUNT", required = true)]
-    max_values_to_remove: u32,
+    /// Number of clues to remove from a solved board (must be < 81).
+    #[arg(short = 'v', long, value_name = "COUNT", required = true)]
+    max_values_to_remove: usize,
+
+    // Use a precomputed solved board instead of computing a new one.
+    #[arg(long)]
+    solved_board: Option<String>,
 }
 
 fn main() {
@@ -100,7 +104,7 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
             if value == 0 {
                 Err("max-solutions must be greater than zero".to_string())
             } else {
-                Ok(value as usize)
+                Ok(value)
             }
         })
         .transpose()?;
@@ -125,19 +129,26 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
 }
 
 fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
+    let mut rng = rand::rng();
+
     let SudokuGenerateArgs {
         show_solved_board,
         max_values_to_remove,
+        solved_board,
     } = args;
 
-    let mut rng = rand::rng();
-    let solved_board = generate_solved_sudoku_board(&mut rng)
-        .map_err(|err| format!("Error while generating solved board: {err:?}"))?;
+    let solved_board = if let Some(solved_board) = solved_board {
+        SudokuBoard::from_puzzle_str(&solved_board)
+            .map_err(|err| format!("Error while converting provided solved board: {err:?}"))?
+    } else {
+        generate_solved_sudoku_board(&mut rng)
+            .map_err(|err| format!("Error while generating a new solved board: {err:?}"))?
+    };
+
     if show_solved_board {
         println!("{}", format_board_with_zones(&solved_board));
     }
 
-    let max_values_to_remove = max_values_to_remove as usize;
     if max_values_to_remove >= solved_board.num_cells() {
         return Err(format!(
             "clues-to-remove must be between 0 and {}",
