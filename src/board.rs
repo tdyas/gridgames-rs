@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU8;
 use std::sync::Arc;
 
-use crate::gamedef::GameDefinition;
+use crate::gamedef::{GameDefinition, GameDefinitionError};
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
@@ -475,26 +475,17 @@ impl<GD: GameDefinition + Default, const CAP: usize> GameDefinition for Board<GD
     }
 
     #[inline]
-    fn get_cells_for_zone(
-        &self,
-        zone_index: usize,
-    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+    fn get_cells_for_zone(&self, zone_index: usize) -> Result<&[usize], GameDefinitionError> {
         self.gamedef.get_cells_for_zone(zone_index)
     }
 
     #[inline]
-    fn get_neighbors_for_cell(
-        &self,
-        cell_index: usize,
-    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+    fn get_neighbors_for_cell(&self, cell_index: usize) -> Result<&[usize], GameDefinitionError> {
         self.gamedef.get_neighbors_for_cell(cell_index)
     }
 
     #[inline]
-    fn get_zones_for_cell(
-        &self,
-        cell_index: usize,
-    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+    fn get_zones_for_cell(&self, cell_index: usize) -> Result<&[usize], GameDefinitionError> {
         self.gamedef.get_zones_for_cell(cell_index)
     }
 }

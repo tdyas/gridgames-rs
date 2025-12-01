@@ -10,11 +10,14 @@ use std::sync::{Arc, OnceLock};
 
 use crate::board::Board;
 use crate::dlx::{Dlx, SolveAction};
-use crate::gamedef::{GameDefinition, GenericGameDefinition};
+use crate::gamedef::{GameDefinition, GameDefinitionError, GenericGameDefinition};
 
 pub mod generate;
 pub mod logical;
 
+/// Type alias to make constructing Board instances for Sudoku easier. By using this type alias,
+/// even with methods defined on `Board`, Rust will infer `CAP` properly when those methods are
+/// invoked via this alias, e.g. `SudokuBoard::new`.
 pub type SudokuBoard = Board<SudokuGameDefinition, 81>;
 
 /// Sudoku game definition. The metadata contains the constraint graph for a Sudoku-like puzzle.
@@ -101,26 +104,17 @@ impl GameDefinition for SudokuGameDefinition {
     }
 
     #[inline]
-    fn get_cells_for_zone(
-        &self,
-        zone_index: usize,
-    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+    fn get_cells_for_zone(&self, zone_index: usize) -> Result<&[usize], GameDefinitionError> {
         self.gamedef.get_cells_for_zone(zone_index)
     }
 
     #[inline]
-    fn get_neighbors_for_cell(
-        &self,
-        cell_index: usize,
-    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+    fn get_neighbors_for_cell(&self, cell_index: usize) -> Result<&[usize], GameDefinitionError> {
         self.gamedef.get_neighbors_for_cell(cell_index)
     }
 
     #[inline]
-    fn get_zones_for_cell(
-        &self,
-        cell_index: usize,
-    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+    fn get_zones_for_cell(&self, cell_index: usize) -> Result<&[usize], GameDefinitionError> {
         self.gamedef.get_zones_for_cell(cell_index)
     }
 }
