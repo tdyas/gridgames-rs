@@ -265,7 +265,8 @@ mod tests {
             060000280\
             000419005\
             000080079";
-        let board: SudokuBoard = puzzle.parse().expect("valid puzzle");
+        let board: SudokuBoard =
+            Board::from_str(SudokuGameDefinition::new(), puzzle).expect("valid puzzle");
         assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.get_value(1), Some(3));
         assert_eq!(board.get_value(2), None);
@@ -281,7 +282,7 @@ mod tests {
 
     #[test]
     fn board_set_value_validates_input() {
-        let mut board = SudokuBoard::new();
+        let mut board = SudokuBoard::new(SudokuGameDefinition::new());
         assert!(board.set_value(10, 5).is_ok());
         assert_eq!(board.get_value(10), Some(5));
 

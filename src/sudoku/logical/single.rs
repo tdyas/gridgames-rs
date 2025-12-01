@@ -53,7 +53,7 @@ mod tests {
     #[test]
     fn test_single_possible_empty_board() {
         // Empty board has no singles (all cells have 9 possibilities).
-        let board = make_sudoku_board;
+        let board = make_sudoku_board();
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
         assert_eq!(moves.len(), 0);
     }
@@ -90,7 +90,7 @@ mod tests {
             ...419..5\
             ....8..79";
 
-        let board = Board::from_str(SudokuGameDefinition::new(), puzzle_str).unwrap();
+        let board: SudokuBoard = Board::from_str(SudokuGameDefinition::new(), puzzle_str).unwrap();
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
 

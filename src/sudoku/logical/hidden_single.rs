@@ -175,7 +175,7 @@ mod tests {
             000419005\
             000080079";
 
-        let board = Board::from_str(SudokuGameDefinition::new(), puzzle_str).unwrap();
+        let board: SudokuBoard = Board::from_str(SudokuGameDefinition::new(), puzzle_str).unwrap();
 
         let hidden_singles = HiddenSingleSolveStrategy::compute_solver_moves(&board);
         assert!(
@@ -265,7 +265,7 @@ mod tests {
             // in at least one zone containing this cell.
             let mut found_zone_with_unique_placement = false;
 
-            for zone_index in board.get_zones_for_cell(mov.index) {
+            for &zone_index in board.get_zones_for_cell(mov.index).unwrap() {
                 let zone = board.get_cells_for_zone(zone_index).unwrap();
                 let mut cells_where_value_possible = Vec::new();
 
