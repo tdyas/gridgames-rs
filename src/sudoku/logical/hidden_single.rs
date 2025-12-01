@@ -64,7 +64,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
-    use crate::sudoku::{SudokuBoard, SudokuGameDefinition};
+    use crate::sudoku::SudokuBoard;
 
     fn make_sudoku_board() -> SudokuBoard {
         SudokuBoard::new()
@@ -175,7 +175,7 @@ mod tests {
             000419005\
             000080079";
 
-        let board: SudokuBoard = Board::from_str(SudokuGameDefinition::new(), puzzle_str).unwrap();
+        let board = SudokuBoard::from_puzzle_str(puzzle_str).unwrap();
 
         let hidden_singles = HiddenSingleSolveStrategy::compute_solver_moves(&board);
         assert!(

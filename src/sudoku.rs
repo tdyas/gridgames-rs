@@ -273,8 +273,7 @@ mod tests {
             060000280\
             000419005\
             000080079";
-        let board: SudokuBoard =
-            Board::from_str(SudokuGameDefinition::new(), puzzle).expect("valid puzzle");
+        let board = SudokuBoard::from_puzzle_str(puzzle).expect("valid puzzle");
         assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.get_value(1), Some(3));
         assert_eq!(board.get_value(2), None);
@@ -317,8 +316,7 @@ mod tests {
             .6....28.\
             ...419..5\
             ....8..79";
-        let board: SudokuBoard =
-            SudokuBoard::from_str(SudokuGameDefinition::new(), puzzle).expect("valid puzzle");
+        let board = SudokuBoard::from_puzzle_str(puzzle).expect("valid puzzle");
         let solutions = solver.solve(&board);
 
         assert_eq!(solutions.len(), 1);
@@ -353,8 +351,7 @@ mod tests {
             000000700\
             000000080\
             000000009";
-        let board: SudokuBoard =
-            SudokuBoard::from_str(SudokuGameDefinition::new(), puzzle).expect("valid puzzle");
+        let board = SudokuBoard::from_puzzle_str(puzzle).expect("valid puzzle");
         let solutions = solver.solve_with_limit(&board, Some(2));
 
         assert_eq!(
@@ -380,8 +377,7 @@ mod tests {
             060000280\
             000419005\
             000080079";
-        let board: SudokuBoard =
-            SudokuBoard::from_str(SudokuGameDefinition::new(), puzzle).expect("valid puzzle");
+        let board = SudokuBoard::from_puzzle_str(puzzle).expect("valid puzzle");
 
         let first: Vec<_> = solver
             .solve(&board)
@@ -411,9 +407,7 @@ mod tests {
             060000280\
             000419005\
             000080079";
-        let gamedef = SudokuGameDefinition::new();
-        let board: SudokuBoard =
-            SudokuBoard::from_str(gamedef.clone(), puzzle).expect("valid puzzle");
+        let board = SudokuBoard::from_puzzle_str(puzzle).expect("valid puzzle");
 
         solver.dlx.clear_solution();
         for cell_index in board.given_indices() {
@@ -421,7 +415,7 @@ mod tests {
                 let row_index = SudokuDlxSolver::row_index_for_assignment(
                     cell_index,
                     value,
-                    gamedef.num_values().into(),
+                    board.num_values().into(),
                 );
                 solver.dlx.add_row_to_solution(row_index);
             }
@@ -435,8 +429,8 @@ mod tests {
 
         solver.dlx.clear_solution();
 
-        let num_columns = gamedef.num_cells() + gamedef.num_zones() * gamedef.num_values() as usize;
-        assert_eq!(captured_rows.len(), gamedef.num_cells());
+        let num_columns = board.num_cells() + board.num_zones() * board.num_values() as usize;
+        assert_eq!(captured_rows.len(), board.num_cells());
 
         let mut column_counts = vec![0u8; num_columns];
         for row_index in captured_rows {
@@ -447,9 +441,9 @@ mod tests {
             }
 
             column_counts[cell_index] += 1;
-            for &zone_index in gamedef.get_zones_for_cell(cell_index).unwrap() {
-                let column = gamedef.num_cells()
-                    + zone_index * gamedef.num_values() as usize
+            for &zone_index in board.get_zones_for_cell(cell_index).unwrap() {
+                let column = board.num_cells()
+                    + zone_index * board.num_values() as usize
                     + (digit as usize - 1);
                 column_counts[column] += 1;
             }

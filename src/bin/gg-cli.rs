@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand};
 use gridgames_rs::{
     gamedef::GameDefinition,
     sudoku::{
-        SudokuBoard, SudokuDlxSolver, SudokuGameDefinition,
+        SudokuBoard, SudokuDlxSolver,
         generate::{generate_solved_sudoku_board, remove_given_values_from_board},
     },
 };
@@ -92,7 +92,7 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
         show_zones,
     } = args;
 
-    let board = SudokuBoard::from_str(SudokuGameDefinition::new(), &puzzle)?;
+    let board = SudokuBoard::from_puzzle_str(&puzzle)?;
     let mut solver = SudokuDlxSolver::new();
 
     let limit = max_solutions

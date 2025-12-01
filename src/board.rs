@@ -101,16 +101,16 @@ impl<GD: GameDefinition + Default, const CAPACITY: usize> Board<GD, CAPACITY> {
     /// # Panics
     /// Panics if the length of `values` does not match `metadata.num_cells`, or if any
     /// value would create an invalid board state.
-    pub fn from_values(gamedef: GD, values: &[Option<u8>]) -> Result<Self, String> {
+    pub fn from_values(values: &[Option<u8>]) -> Result<Self, String> {
+        let mut board = Self::new();
         assert_eq!(
             values.len(),
-            gamedef.num_cells(),
+            board.num_cells(),
             "Expected {} values, got {}",
-            gamedef.num_cells(),
+            board.num_cells(),
             values.len()
         );
 
-        let mut board = Self::new();
         for (index, &value) in values.iter().enumerate() {
             if let Some(v) = value {
                 board.set_value(index, v)?;
@@ -120,15 +120,15 @@ impl<GD: GameDefinition + Default, const CAPACITY: usize> Board<GD, CAPACITY> {
     }
 
     /// Creates a board from a puzzle string.
-    pub fn from_str(gamedef: GD, values_str: &str) -> Result<Self, String> {
+    pub fn from_puzzle_str(values_str: &str) -> Result<Self, String> {
+        let mut board = Self::new();
         assert_eq!(
             values_str.len(),
-            gamedef.num_cells(),
+            board.num_cells(),
             "Expected {} length string with values, got {} length instead",
-            gamedef.num_cells(),
+            board.num_cells(),
             values_str.len()
         );
-        let mut board = Self::new();
         for (index, ch) in values_str.chars().enumerate() {
             if ch.is_ascii_digit() {
                 let value = (ch as u8) - b'0';
@@ -502,7 +502,7 @@ impl<GD: GameDefinition + Default, const CAPACITY: usize> GameDefinition for Boa
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sudoku::{SudokuBoard, SudokuGameDefinition};
+    use crate::sudoku::SudokuBoard;
 
     fn make_sudoku_board() -> SudokuBoard {
         SudokuBoard::new()
@@ -644,7 +644,7 @@ mod tests {
         values[1] = Some(3);
         values[9] = Some(7);
 
-        let board: SudokuBoard = Board::from_values(SudokuGameDefinition::new(), &values).unwrap();
+        let board = SudokuBoard::from_values(&values).unwrap();
 
         assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.get_value(1), Some(3));
@@ -660,7 +660,7 @@ mod tests {
     #[should_panic(expected = "Expected 81 values, got 50")]
     fn test_from_values_wrong_length() {
         let values = vec![None; 50]; // Wrong length
-        let _: SudokuBoard = Board::from_values(SudokuGameDefinition::new(), &values).unwrap();
+        let _ = SudokuBoard::from_values(&values).unwrap();
     }
 
     #[test]

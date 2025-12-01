@@ -44,7 +44,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
-    use crate::sudoku::{SudokuBoard, SudokuGameDefinition};
+    use crate::sudoku::SudokuBoard;
 
     fn make_sudoku_board() -> SudokuBoard {
         SudokuBoard::new()
@@ -90,7 +90,7 @@ mod tests {
             ...419..5\
             ....8..79";
 
-        let board: SudokuBoard = Board::from_str(SudokuGameDefinition::new(), puzzle_str).unwrap();
+        let board = SudokuBoard::from_puzzle_str(puzzle_str).unwrap();
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
 
