@@ -6,12 +6,13 @@
 //! The Dlx constaint matrix uses 324 columns arranged as 81 cell-occupancy constraints followed by
 //! 27 zones × 9 digits each enforcing that every digit appears exactly once per zone.
 
-use std::{borrow::Cow, fmt, num::NonZeroU8, str::FromStr};
+use std::cell;
 use std::sync::{Arc, OnceLock};
+use std::{borrow::Cow, fmt, num::NonZeroU8, str::FromStr};
 
 use crate::Board;
 use crate::dlx::{Dlx, SolveAction};
-use crate::gamedef::GenericGameDefinition;
+use crate::gamedef::{GameDefinition, GenericGameDefinition};
 
 pub mod generate;
 pub mod logical;
@@ -73,137 +74,50 @@ impl SudokuGameDefinition {
             Arc::new(gamedef)
         });
 
-        Self { gamedef: Arc::clone(gamedef) }
+        Self {
+            gamedef: Arc::clone(gamedef),
+        }
     }
 }
 
-/// Mutable Sudoku board that stores digits in row-major order.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SudokuBoard {
-    cells: [Option<NonZeroU8>; SudokuGraph::NUM_CELLS],
-}
-
-impl SudokuBoard {
-    /// Creates an empty board (all cells unset).
-    pub fn empty() -> SudokuBoard {
-        SudokuBoard {
-            cells: [None; SudokuGraph::NUM_CELLS],
-        }
+impl GameDefinition for SudokuGameDefinition {
+    #[inline]
+    fn num_cells(&self) -> usize {
+        self.gamedef.num_cells()
     }
 
-    /// Returns the stored digit at the provided cell index (`None` for empty).
-    pub fn value(&self, index: usize) -> Option<u8> {
-        assert!(index < SudokuGraph::NUM_CELLS);
-        self.cells[index].map(|digit| digit.get())
+    #[inline]
+    fn num_values(&self) -> u8 {
+        self.gamedef.num_values()
     }
 
-    /// Sets a digit (1-9) or clears a cell by providing `None`.
-    pub fn set_value(&mut self, index: usize, value: Option<u8>) -> Result<(), String> {
-        if index >= SudokuGraph::NUM_CELLS {
-            return Err(format!("cell index {index} is out of bounds"));
-        }
-        match value {
-            Some(digit @ 1..=9) => {
-                self.cells[index] = NonZeroU8::new(digit);
-                Ok(())
-            }
-            Some(digit) => Err(format!("value {digit} is outside the allowed range 1-9")),
-            None => {
-                self.cells[index] = None;
-                Ok(())
-            }
-        }
+    #[inline]
+    fn num_zones(&self) -> usize {
+        self.gamedef.num_zones()
     }
 
-    /// Removes any digit from the given cell.
-    pub fn clear(&mut self, index: usize) {
-        assert!(index < SudokuGraph::NUM_CELLS);
-        self.cells[index] = None;
+    #[inline]
+    fn get_cells_for_zone(
+        &self,
+        zone_index: usize,
+    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+        self.gamedef.get_cells_for_zone(zone_index)
     }
 
-    /// Iterator over indices that currently have givens.
-    pub fn given_indices(&self) -> impl Iterator<Item = usize> + '_ {
-        self.cells
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, value)| value.map(|_| idx))
+    #[inline]
+    fn get_neighbors_for_cell(
+        &self,
+        cell_index: usize,
+    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+        self.gamedef.get_neighbors_for_cell(cell_index)
     }
 
-    /// Returns an owning string representation using '.' for empty cells.
-    pub fn to_puzzle_string(&self) -> String {
-        self.cells
-            .iter()
-            .map(|value| match value {
-                None => '.',
-                Some(digit) => (b'0' + digit.get()) as char,
-            })
-            .collect()
-    }
-}
-
-impl Default for SudokuBoard {
-    fn default() -> Self {
-        Self::empty()
-    }
-}
-
-impl fmt::Display for SudokuBoard {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for row in 0..9 {
-            if row != 0 {
-                writeln!(f)?;
-            }
-            for col in 0..9 {
-                match self.value(row * 9 + col) {
-                    Some(value) => write!(f, "{value}")?,
-                    None => write!(f, ".")?,
-                }
-                if col != 8 {
-                    write!(f, " ")?
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
-impl FromStr for SudokuBoard {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let trimmed = normalize_puzzle_string(s);
-
-        if trimmed.len() != SudokuGraph::NUM_CELLS {
-            return Err(format!(
-                "expected {} characters, found {}",
-                SudokuGraph::NUM_CELLS,
-                trimmed.len()
-            ));
-        }
-
-        let mut board = SudokuBoard::empty();
-        for (idx, ch) in trimmed.chars().enumerate() {
-            let value = match ch {
-                '1'..='9' => NonZeroU8::new(ch as u8 - b'0'),
-                '0' | '.' => None,
-                _ => {
-                    return Err(format!(
-                        "invalid character '{ch}' at position {idx}; expected digits or '.'"
-                    ));
-                }
-            };
-            board.cells[idx] = value;
-        }
-
-        Ok(board)
-    }
-}
-
-fn normalize_puzzle_string(s: &str) -> Cow<'_, str> {
-    if s.len() == SudokuGraph::NUM_CELLS {
-        Cow::Borrowed(s)
-    } else {
-        Cow::Owned(s.chars().filter(|c| !c.is_whitespace()).collect())
+    #[inline]
+    fn get_zones_for_cell(
+        &self,
+        cell_index: usize,
+    ) -> Result<&[usize], crate::gamedef::GameDefinitionError> {
+        self.gamedef.get_zones_for_cell(cell_index)
     }
 }
 
@@ -214,37 +128,38 @@ fn normalize_puzzle_string(s: &str) -> Cow<'_, str> {
 /// asserts the cell column and the three zone columns corresponding to the cell's row, column,
 /// and box. Givens are applied by pre-selecting the associated rows before invoking `solve`.
 pub struct SudokuDlxSolver {
-    graph: SudokuGraph,
+    gamedef: SudokuGameDefinition,
     dlx: Dlx,
     row_assignments: Vec<(usize, u8)>,
 }
 
 impl SudokuDlxSolver {
     pub fn new() -> SudokuDlxSolver {
-        SudokuDlxSolver::with_graph(SudokuGraph::new())
+        SudokuDlxSolver::with_graph(SudokuGameDefinition::new())
     }
 
-    pub fn with_graph(graph: SudokuGraph) -> SudokuDlxSolver {
-        let num_cell_columns = graph.metadata.num_cells;
-        let num_zone_value_columns = graph.metadata.zones.len() * graph.metadata.num_values;
+    pub fn with_graph(gamedef: SudokuGameDefinition) -> SudokuDlxSolver {
+        let num_cell_columns = gamedef.num_cells();
+        let num_zone_value_columns = gamedef.num_zones() * gamedef.num_values() as usize;
         let num_columns = num_cell_columns + num_zone_value_columns;
 
         let mut dlx = Dlx::new(num_columns);
         let mut row_assignments =
-            Vec::with_capacity(graph.metadata.num_cells * graph.metadata.num_values);
+            Vec::with_capacity(gamedef.num_cells() * gamedef.num_values() as usize);
 
         let mut row_buffer = vec![false; num_columns];
-        for cell_index in 0..graph.metadata.num_cells {
-            for value in 1..=graph.metadata.num_values {
+        for cell_index in 0..gamedef.num_cells() {
+            for value in 1..=gamedef.num_values() {
                 row_buffer.fill(false);
 
                 // Cell constraint: each cell must contain exactly one digit.
                 row_buffer[cell_index] = true;
 
                 // Zone/value constraints: each zone contains each digit at most once.
-                for &zone_index in &graph.metadata.zones_for_cell[cell_index] {
-                    let column =
-                        num_cell_columns + zone_index * graph.metadata.num_values + (value - 1);
+                for &zone_index in gamedef.get_zones_for_cell(cell_index).unwrap() {
+                    let column = num_cell_columns
+                        + zone_index * gamedef.num_values() as usize
+                        + (value as usize - 1);
                     row_buffer[column] = true;
                 }
 
@@ -254,7 +169,7 @@ impl SudokuDlxSolver {
         }
 
         SudokuDlxSolver {
-            graph,
+            gamedef,
             dlx,
             row_assignments,
         }
@@ -278,11 +193,8 @@ impl SudokuDlxSolver {
 
         for cell_index in board.given_indices() {
             if let Some(value) = board.value(cell_index) {
-                let row_index = Self::row_index_for_assignment(
-                    cell_index,
-                    value,
-                    self.graph.metadata.num_values,
-                );
+                let row_index =
+                    Self::row_index_for_assignment(cell_index, value, self.gamedef.num_values());
                 self.dlx.add_row_to_solution(row_index);
             }
         }
@@ -292,7 +204,7 @@ impl SudokuDlxSolver {
             for row_index in solution_rows {
                 let (cell_index, digit) = self.row_assignments[row_index];
                 solved
-                    .set_value(cell_index, Some(digit))
+                    .set_value(cell_index, digit)
                     .expect("solver should only emit valid digits");
             }
             solutions.push(solved);
@@ -508,7 +420,7 @@ mod tests {
                 let row_index = SudokuDlxSolver::row_index_for_assignment(
                     cell_index,
                     value,
-                    solver.graph.metadata.num_values,
+                    solver.gamedef.metadata.num_values,
                 );
                 solver.dlx.add_row_to_solution(row_index);
             }
@@ -522,9 +434,9 @@ mod tests {
 
         solver.dlx.clear_solution();
 
-        let num_columns = solver.graph.metadata.num_cells
-            + solver.graph.metadata.zones.len() * solver.graph.metadata.num_values;
-        assert_eq!(captured_rows.len(), solver.graph.metadata.num_cells);
+        let num_columns = solver.gamedef.metadata.num_cells
+            + solver.gamedef.metadata.zones.len() * solver.gamedef.metadata.num_values;
+        assert_eq!(captured_rows.len(), solver.gamedef.metadata.num_cells);
 
         let mut column_counts = vec![0u8; num_columns];
         for row_index in captured_rows {
@@ -535,9 +447,9 @@ mod tests {
             }
 
             column_counts[cell_index] += 1;
-            for &zone_index in &solver.graph.metadata.zones_for_cell[cell_index] {
-                let column = solver.graph.metadata.num_cells
-                    + zone_index * solver.graph.metadata.num_values
+            for &zone_index in &solver.gamedef.metadata.zones_for_cell[cell_index] {
+                let column = solver.gamedef.metadata.num_cells
+                    + zone_index * solver.gamedef.metadata.num_values
                     + (digit as usize - 1);
                 column_counts[column] += 1;
             }

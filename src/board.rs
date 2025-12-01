@@ -7,7 +7,10 @@ use std::collections::HashMap;
 use std::num::NonZeroU8;
 use std::sync::Arc;
 
-use crate::{gamedef::GameDefinition, sudoku::{SudokuBoard, ZoneMetadata}};
+use crate::{
+    gamedef::GameDefinition,
+    sudoku::{SudokuBoard, ZoneMetadata},
+};
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
@@ -77,7 +80,9 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
         // Initialize zone counts - each zone starts with all cells unfilled
         let mut zone_counts = Vec::with_capacity(num_zones);
         for zone_index in 0..num_zones {
-            let zone = gamedef.get_cells_for_zone(zone_index).expect("invalid zone index?");
+            let zone = gamedef
+                .get_cells_for_zone(zone_index)
+                .expect("invalid zone index?");
             zone_counts.push(zone.len());
         }
 
@@ -126,7 +131,8 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
         if value == 0 || value > self.gamedef.num_values() {
             return Err(format!(
                 "value {} out of range 1..={}",
-                value, self.gamedef.num_values()
+                value,
+                self.gamedef.num_values()
             ));
         }
 
@@ -357,7 +363,7 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
     /// Gets the number of possible values (1-N)
     #[inline]
     pub fn num_values(&self) -> usize {
-        self.gamedef.num_values() as usize   // TODO: Fix this type.
+        self.gamedef.num_values() as usize // TODO: Fix this type.
     }
 
     /// Gets the number of filled cells
@@ -383,7 +389,8 @@ impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
         println!("=== {} ===", message);
         println!(
             "Cells set: {}/{}",
-            self.num_set_cells, self.gamedef.num_cells()
+            self.num_set_cells,
+            self.gamedef.num_cells()
         );
 
         // Print values grid (assuming square grid for formatting)
