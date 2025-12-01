@@ -1,9 +1,12 @@
 use std::process;
 
 use clap::{Args, Parser, Subcommand};
-use gridgames_rs::sudoku::{
-    SudokuBoard, SudokuDlxSolver, SudokuGraph,
-    generate::{generate_solved_sudoku_board, remove_given_values_from_board},
+use gridgames_rs::{
+    gamedef::GameDefinition,
+    sudoku::{
+        SudokuBoard, SudokuDlxSolver,
+        generate::{generate_solved_sudoku_board, remove_given_values_from_board},
+    },
 };
 
 #[derive(Parser)]
@@ -89,7 +92,7 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
         show_zones,
     } = args;
 
-    let board: SudokuBoard = puzzle.parse()?;
+    let board = SudokuBoard::from_puzzle_str(&puzzle)?;
     let mut solver = SudokuDlxSolver::new();
 
     let limit = max_solutions
@@ -111,7 +114,7 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
             if show_zones {
                 println!("{}", format_board_with_zones(solution));
             } else {
-                println!("{solution}");
+                println!("{solution:?}");
             }
             println!();
         }
@@ -135,10 +138,10 @@ fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
     }
 
     let max_values_to_remove = max_values_to_remove as usize;
-    if max_values_to_remove >= SudokuGraph::NUM_CELLS {
+    if max_values_to_remove >= solved_board.num_cells() {
         return Err(format!(
             "clues-to-remove must be between 0 and {}",
-            SudokuGraph::NUM_CELLS - 1
+            solved_board.num_cells() - 1
         ));
     }
 
@@ -149,7 +152,7 @@ fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
 
     println!(
         "Generated puzzle (removed {} clues, {} given values):",
-        SudokuGraph::NUM_CELLS - actual_num_clues_remaining,
+        puzzle.num_cells() - actual_num_clues_remaining,
         actual_num_clues_remaining,
     );
     println!("{}", format_board_with_zones(&puzzle));
@@ -174,7 +177,7 @@ fn format_board_with_zones(board: &SudokuBoard) -> String {
         for col in 0..9 {
             let idx = row * 9 + col;
             row_chars[col] = board
-                .value(idx)
+                .get_value(idx)
                 .map(|digit| char::from(b'0' + digit))
                 .unwrap_or('.');
         }

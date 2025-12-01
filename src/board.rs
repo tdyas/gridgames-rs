@@ -7,27 +7,27 @@ use std::collections::HashMap;
 use std::num::NonZeroU8;
 use std::sync::Arc;
 
-use crate::sudoku::{SudokuBoard, ZoneMetadata};
+use crate::gamedef::{GameDefinition, GameDefinitionError};
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
-pub trait SolveStrategy {
+pub trait SolveStrategy<GD: GameDefinition + Default, const CAP: usize> {
     /// Return a set of possible moves given the represented strategy.
-    fn compute_solver_moves(board: &Board) -> Vec<SolverMove>;
+    fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove>;
 }
 
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
 #[derive(Clone, Debug)]
-pub struct Board {
+pub struct Board<GD: GameDefinition + Default, const CAP: usize> {
     /// Reference to the constraint graph defining game rules
-    metadata: Arc<ZoneMetadata>,
+    gamedef: Arc<GD>,
 
-    /// Cell values: None = empty, Some(v) = filled with value v (1-N)
-    values: Vec<Option<NonZeroU8>>,
+    /// Cell values: None = empty, Some(v) = filled with value v (1-N).
+    values: [Option<NonZeroU8>; CAP],
 
     /// Bitmask of possible values per cell (bit i = value i+1 is possible)
-    possible: Vec<u32>,
+    possible: [u32; CAP],
 
     /// Count of unfilled cells per zone
     zone_counts: Vec<usize>,
@@ -68,24 +68,26 @@ pub enum FindResult {
     Contradiction,
 }
 
-impl Board {
+impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     /// Creates a new empty board with the given zone graph.
-    pub fn new(metadata: ZoneMetadata) -> Self {
-        let metadata = Arc::new(metadata);
-        let num_cells = metadata.num_cells;
-        let num_zones = metadata.zones.len();
-        let all_values_mask = (1 << metadata.num_values) - 1;
+    pub fn new() -> Self {
+        let gamedef = GD::default();
+        let num_zones = gamedef.num_zones();
+        let all_values_mask = (1 << gamedef.num_values()) - 1;
 
         // Initialize zone counts - each zone starts with all cells unfilled
         let mut zone_counts = Vec::with_capacity(num_zones);
-        for zone in &metadata.zones {
+        for zone_index in 0..num_zones {
+            let zone = gamedef
+                .get_cells_for_zone(zone_index)
+                .expect("invalid zone index?");
             zone_counts.push(zone.len());
         }
 
         Board {
-            metadata,
-            values: vec![None; num_cells],
-            possible: vec![all_values_mask; num_cells],
+            gamedef: Arc::new(gamedef),
+            values: [None; CAP],
+            possible: [all_values_mask; CAP],
             zone_counts,
             num_set_cells: 0,
             stats: HashMap::new(),
@@ -99,19 +101,42 @@ impl Board {
     /// # Panics
     /// Panics if the length of `values` does not match `metadata.num_cells`, or if any
     /// value would create an invalid board state.
-    pub fn from_values(metadata: ZoneMetadata, values: &[Option<u8>]) -> Result<Self, String> {
+    pub fn from_values(values: &[Option<u8>]) -> Result<Self, String> {
+        let mut board = Self::new();
         assert_eq!(
             values.len(),
-            metadata.num_cells,
+            board.num_cells(),
             "Expected {} values, got {}",
-            metadata.num_cells,
+            board.num_cells(),
             values.len()
         );
 
-        let mut board = Self::new(metadata);
         for (index, &value) in values.iter().enumerate() {
             if let Some(v) = value {
                 board.set_value(index, v)?;
+            }
+        }
+        Ok(board)
+    }
+
+    /// Creates a board from a puzzle string.
+    pub fn from_puzzle_str(values_str: &str) -> Result<Self, String> {
+        let mut board = Self::new();
+        assert_eq!(
+            values_str.len(),
+            board.num_cells(),
+            "Expected {} length string with values, got {} length instead",
+            board.num_cells(),
+            values_str.len()
+        );
+        for (index, ch) in values_str.chars().enumerate() {
+            if ch.is_ascii_digit() {
+                let value = (ch as u8) - b'0';
+                if value > 0 {
+                    board.set_value(index, value)?;
+                }
+            } else if ch != '.' && !ch.is_whitespace() {
+                return Err(format!("Expected a digit or '.', instead got `{ch}`"));
             }
         }
         Ok(board)
@@ -121,17 +146,18 @@ impl Board {
     /// Returns an error if the value is invalid or creates a contradiction.
     pub fn set_value(&mut self, index: usize, value: u8) -> Result<(), String> {
         // Validate inputs
-        if index >= self.metadata.num_cells {
+        if index >= self.gamedef.num_cells() {
             return Err(format!("index {} out of bounds", index));
         }
-        if value == 0 || value > self.metadata.num_values as u8 {
+        if value == 0 || value > self.gamedef.num_values() {
             return Err(format!(
                 "value {} out of range 1..={}",
-                value, self.metadata.num_values
+                value,
+                self.gamedef.num_values()
             ));
         }
 
-        // Check if value is possible
+        // Check if the value is possible given current cell assignments.
         let value_bit = 1 << (value - 1);
         if self.possible[index] & value_bit == 0 {
             return Err(format!("value {} not possible at index {}", value, index));
@@ -145,7 +171,11 @@ impl Board {
             self.num_set_cells += 1;
 
             // Update zone counts
-            for &zone_index in &self.metadata.zones_for_cell[index] {
+            for &zone_index in self
+                .gamedef
+                .get_zones_for_cell(index)
+                .map_err(|err| format!("set_value failed at index {index}{err:?}"))?
+            {
                 self.zone_counts[zone_index] -= 1;
             }
         }
@@ -154,7 +184,7 @@ impl Board {
         self.possible[index] = 0; // No other values possible
 
         // Update all neighbors - remove this value from their possibility sets
-        for &neighbor_index in &self.metadata.neighbors_for_cell[index] {
+        for &neighbor_index in self.gamedef.get_neighbors_for_cell(index).unwrap() {
             self.possible[neighbor_index] &= !value_bit;
         }
 
@@ -163,7 +193,7 @@ impl Board {
 
     /// Clears a cell value and recalculates constraints
     pub fn reset_value(&mut self, index: usize) -> Result<(), String> {
-        if index >= self.metadata.num_cells {
+        if index >= self.gamedef.num_cells() {
             return Err(format!("index {} out of bounds", index));
         }
 
@@ -171,18 +201,18 @@ impl Board {
             self.values[index] = None;
             self.num_set_cells -= 1;
 
-            // Update zone counts
-            for &zone_index in &self.metadata.zones_for_cell[index] {
+            // Update the zone's count of unfilled cells.
+            for &zone_index in self.gamedef.get_zones_for_cell(index).unwrap() {
                 self.zone_counts[zone_index] += 1;
             }
 
-            // Recalculate possible values for this cell
+            // Recalculate the possible values for this cell.
             self.recalculate_possible(index);
 
-            // Recalculate possible values for all neighbors
-            // Clone the neighbor list to avoid borrow checker issues
-            let neighbors: Vec<usize> = self.metadata.neighbors_for_cell[index].clone();
-            for neighbor_index in neighbors {
+            // Recalculate possible values for all neighboring cells as well.
+            // Clone the Arc to avoid holding an immutable borrow of `self` while mutating.
+            let gamedef = Arc::clone(&self.gamedef);
+            for &neighbor_index in gamedef.get_neighbors_for_cell(index).unwrap() {
                 self.recalculate_possible(neighbor_index);
             }
         }
@@ -197,11 +227,11 @@ impl Board {
             return;
         }
 
-        // Start with all values possible
-        let mut mask = (1 << self.metadata.num_values) - 1;
+        // Start with all values possible.
+        let mut mask = (1 << self.gamedef.num_values()) - 1;
 
-        // Remove values used by neighbors
-        for &neighbor_index in &self.metadata.neighbors_for_cell[index] {
+        // Remove values used by neighbors.
+        for &neighbor_index in self.gamedef.get_neighbors_for_cell(index).unwrap() {
             if let Some(neighbor_value) = self.values[neighbor_index] {
                 mask &= !(1 << (neighbor_value.get() - 1));
             }
@@ -209,8 +239,6 @@ impl Board {
 
         self.possible[index] = mask;
     }
-
-    // ===== Querying State =====
 
     /// Gets the value at a cell (None = empty, Some(v) = filled with value v)
     pub fn get_value(&self, index: usize) -> Option<u8> {
@@ -240,7 +268,7 @@ impl Board {
 
     /// Checks if a specific value is possible at a cell
     pub fn is_value_possible(&self, index: usize, value: u8) -> bool {
-        if value == 0 || value > self.metadata.num_values as u8 {
+        if value == 0 || value > self.gamedef.num_values() {
             return false;
         }
         let value_bit = 1 << (value - 1);
@@ -250,9 +278,28 @@ impl Board {
     /// Gets the list of possible values for a cell as a Vec
     pub fn get_possible_values(&self, index: usize) -> Vec<u8> {
         let mask = self.get_possible(index);
-        (0..self.metadata.num_values)
+        (0..self.gamedef.num_values())
             .filter(|&i| mask & (1 << i) != 0)
-            .map(|i| (i + 1) as u8)
+            .map(|i| i + 1)
+            .collect()
+    }
+
+    pub fn given_indices(&self) -> impl Iterator<Item = usize> + '_ {
+        self.values
+            .iter()
+            .take(self.gamedef.num_cells())
+            .enumerate()
+            .filter_map(|(index, value)| value.map(|_| index))
+    }
+
+    pub fn to_puzzle_string(&self) -> String {
+        self.values
+            .iter()
+            .take(self.gamedef.num_cells())
+            .map(|value| match value {
+                None => '.',
+                Some(digit) => (b'0' + digit.get()) as char,
+            })
             .collect()
     }
 
@@ -264,7 +311,7 @@ impl Board {
     /// - `FindResult::Contradiction` if the board has an unsolvable contradiction
     /// - `FindResult::Found(index)` with the cell index having the fewest possibilities
     pub fn find_index_with_least_possibilities(&self) -> FindResult {
-        if self.num_set_cells == self.metadata.num_cells {
+        if self.num_set_cells == self.gamedef.num_cells() {
             return FindResult::Solved;
         }
 
@@ -351,59 +398,9 @@ impl Board {
 
     // ===== Metadata Access =====
 
-    /// Gets the number of cells in the board
-    pub fn num_cells(&self) -> usize {
-        self.metadata.num_cells
-    }
-
-    /// Gets the number of possible values (1-N)
-    pub fn num_values(&self) -> usize {
-        self.metadata.num_values
-    }
-
-    /// Gets the number of filled cells
-    pub fn num_set_cells(&self) -> usize {
-        self.num_set_cells
-    }
-
-    /// Gets the constraint metadata (graph)
-    pub fn metadata(&self) -> &Arc<ZoneMetadata> {
-        &self.metadata
-    }
-
     /// Gets the count of unfilled cells in a specific zone
     pub fn zone_count(&self, zone_index: usize) -> usize {
         self.zone_counts.get(zone_index).copied().unwrap_or(0)
-    }
-
-    // ===== SudokuBoard Integration =====
-
-    /// Creates a Board from a SudokuBoard (9x9 specific)
-    pub fn from_sudoku_board(board: &SudokuBoard, metadata: ZoneMetadata) -> Result<Board, String> {
-        if metadata.num_cells != 81 {
-            return Err("SudokuBoard requires 81-cell metadata".to_string());
-        }
-
-        let mut b = Board::new(metadata);
-        for index in 0..81 {
-            if let Some(value) = board.value(index) {
-                b.set_value(index, value)?;
-            }
-        }
-        Ok(b)
-    }
-
-    /// Converts to a SudokuBoard (9x9 specific)
-    pub fn to_sudoku_board(&self) -> Result<SudokuBoard, String> {
-        if self.metadata.num_cells != 81 {
-            return Err("SudokuBoard requires 81 cells".to_string());
-        }
-
-        let mut board = SudokuBoard::empty();
-        for (index, &value) in self.values.iter().enumerate() {
-            board.set_value(index, value.map(|v| v.get()))?;
-        }
-        Ok(board)
     }
 
     // ===== Debug Support =====
@@ -414,11 +411,12 @@ impl Board {
         println!("=== {} ===", message);
         println!(
             "Cells set: {}/{}",
-            self.num_set_cells, self.metadata.num_cells
+            self.num_set_cells,
+            self.gamedef.num_cells()
         );
 
         // Print values grid (assuming square grid for formatting)
-        let side = (self.metadata.num_cells as f64).sqrt() as usize;
+        let side = (self.gamedef.num_cells() as f64).sqrt() as usize;
         println!("\nValues:");
         for row in 0..side {
             for col in 0..side {
@@ -460,23 +458,50 @@ impl Board {
     }
 }
 
+impl<GD: GameDefinition + Default, const CAP: usize> GameDefinition for Board<GD, CAP> {
+    #[inline]
+    fn num_cells(&self) -> usize {
+        self.gamedef.num_cells()
+    }
+
+    #[inline]
+    fn num_values(&self) -> u8 {
+        self.gamedef.num_values()
+    }
+
+    #[inline]
+    fn num_zones(&self) -> usize {
+        self.gamedef.num_zones()
+    }
+
+    #[inline]
+    fn get_cells_for_zone(&self, zone_index: usize) -> Result<&[usize], GameDefinitionError> {
+        self.gamedef.get_cells_for_zone(zone_index)
+    }
+
+    #[inline]
+    fn get_neighbors_for_cell(&self, cell_index: usize) -> Result<&[usize], GameDefinitionError> {
+        self.gamedef.get_neighbors_for_cell(cell_index)
+    }
+
+    #[inline]
+    fn get_zones_for_cell(&self, cell_index: usize) -> Result<&[usize], GameDefinitionError> {
+        self.gamedef.get_zones_for_cell(cell_index)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sudoku::SudokuGraph;
-
-    fn make_sudoku_metadata() -> ZoneMetadata {
-        SudokuGraph::new().metadata
-    }
+    use crate::sudoku::SudokuBoard;
 
     #[test]
     fn test_new_board() {
-        let metadata = make_sudoku_metadata();
-        let board = Board::new(metadata);
+        let board = SudokuBoard::new();
 
         assert_eq!(board.num_cells(), 81);
         assert_eq!(board.num_values(), 9);
-        assert_eq!(board.num_set_cells(), 0);
+        assert_eq!(board.given_indices().count(), 0);
 
         // All cells should be empty
         for i in 0..81 {
@@ -494,13 +519,12 @@ mod tests {
 
     #[test]
     fn test_set_value_basic() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Set cell 0 (row 0, col 0) to value 5.
         assert!(board.set_value(0, 5).is_ok());
         assert_eq!(board.get_value(0), Some(5));
-        assert_eq!(board.num_set_cells(), 1);
+        assert_eq!(board.given_indices().count(), 1);
         assert_eq!(board.count_possible(0), 0); // No other values possible
 
         // Value 5 should be removed from all neighbors.
@@ -522,8 +546,7 @@ mod tests {
 
     #[test]
     fn test_set_value_constraint_propagation() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Fill the first row with values 1-9
         for col in 0..9 {
@@ -531,7 +554,7 @@ mod tests {
         }
 
         // All cells in row 0 should be filled
-        assert_eq!(board.num_set_cells(), 9);
+        assert_eq!(board.given_indices().count(), 9);
 
         // Cell 9 (row 1, col 0) should not be able to have value 1
         // because cell 0 (row 0, col 0) already has it
@@ -543,8 +566,7 @@ mod tests {
 
     #[test]
     fn test_set_value_invalid_index() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         let result = board.set_value(100, 5);
         assert!(result.is_err());
@@ -553,8 +575,7 @@ mod tests {
 
     #[test]
     fn test_set_value_invalid_value() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Value 0 is invalid
         let result = board.set_value(0, 0);
@@ -569,8 +590,7 @@ mod tests {
 
     #[test]
     fn test_set_value_impossible() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
         board.set_value(0, 5).unwrap();
@@ -583,18 +603,17 @@ mod tests {
 
     #[test]
     fn test_reset_value() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
         board.set_value(0, 5).unwrap();
         assert_eq!(board.get_value(0), Some(5));
-        assert_eq!(board.num_set_cells(), 1);
+        assert_eq!(board.given_indices().count(), 1);
 
         // Reset cell 0
         board.reset_value(0).unwrap();
         assert_eq!(board.get_value(0), None);
-        assert_eq!(board.num_set_cells(), 0);
+        assert_eq!(board.given_indices().count(), 0);
         assert!(board.is_empty(0));
 
         // Cell 0 should have all values possible again
@@ -606,20 +625,18 @@ mod tests {
 
     #[test]
     fn test_from_values() {
-        let metadata = make_sudoku_metadata();
-
         // Create a simple pattern
         let mut values = vec![None; 81];
         values[0] = Some(5);
         values[1] = Some(3);
         values[9] = Some(7);
 
-        let board = Board::from_values(metadata, &values).unwrap();
+        let board = SudokuBoard::from_values(&values).unwrap();
 
         assert_eq!(board.get_value(0), Some(5));
         assert_eq!(board.get_value(1), Some(3));
         assert_eq!(board.get_value(9), Some(7));
-        assert_eq!(board.num_set_cells(), 3);
+        assert_eq!(board.given_indices().count(), 3);
 
         // Check constraint propagation happened
         assert!(!board.is_value_possible(2, 5)); // Same row as cell 0
@@ -629,16 +646,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "Expected 81 values, got 50")]
     fn test_from_values_wrong_length() {
-        let metadata = make_sudoku_metadata();
         let values = vec![None; 50]; // Wrong length
-
-        let _ = Board::from_values(metadata, &values);
+        let _ = SudokuBoard::from_values(&values).unwrap();
     }
 
     #[test]
     fn test_get_possible_values() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Initially, all values 1-9 should be possible
         let possible = board.get_possible_values(0);
@@ -654,8 +668,7 @@ mod tests {
 
     #[test]
     fn test_find_index_with_least_possibilities() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Empty board - all cells have 9 possibilities
         let result = board.find_index_with_least_possibilities();
@@ -677,8 +690,7 @@ mod tests {
 
     #[test]
     fn test_find_index_solved() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Fill entire board with a valid Sudoku solution
         let solution = vec![
@@ -698,8 +710,7 @@ mod tests {
 
     #[test]
     fn test_find_index_contradiction() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Create a contradiction by filling row 0 with 1-8
         for col in 0..8 {
@@ -729,8 +740,7 @@ mod tests {
 
     #[test]
     fn test_stats() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         assert_eq!(board.get_stat("singles"), 0);
 
@@ -748,8 +758,7 @@ mod tests {
 
     #[test]
     fn test_moves() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         assert_eq!(board.get_moves().len(), 0);
 
@@ -771,8 +780,7 @@ mod tests {
 
     #[test]
     fn test_clone() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         board.set_value(0, 5).unwrap();
         board.inc_stat("test");
@@ -781,38 +789,12 @@ mod tests {
 
         assert_eq!(board2.get_value(0), Some(5));
         assert_eq!(board2.get_stat("test"), 1);
-        assert_eq!(board2.num_set_cells(), 1);
-    }
-
-    #[test]
-    fn test_sudoku_board_conversion() {
-        let metadata = make_sudoku_metadata();
-
-        // Create a SudokuBoard with some values
-        let mut sudoku = SudokuBoard::empty();
-        sudoku.set_value(0, Some(5)).unwrap();
-        sudoku.set_value(1, Some(3)).unwrap();
-        sudoku.set_value(10, Some(7)).unwrap();
-
-        // Convert to Board
-        let board = Board::from_sudoku_board(&sudoku, metadata).unwrap();
-        assert_eq!(board.get_value(0), Some(5));
-        assert_eq!(board.get_value(1), Some(3));
-        assert_eq!(board.get_value(10), Some(7));
-        assert_eq!(board.num_set_cells(), 3);
-
-        // Convert back to SudokuBoard
-        let sudoku2 = board.to_sudoku_board().unwrap();
-        assert_eq!(sudoku2.value(0), Some(5));
-        assert_eq!(sudoku2.value(1), Some(3));
-        assert_eq!(sudoku2.value(10), Some(7));
-        assert_eq!(sudoku2.value(2), None);
+        assert_eq!(board2.given_indices().count(), 1);
     }
 
     #[test]
     fn test_zone_counts() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Initially all zones should have 9 unfilled cells
         // Sudoku has 27 zones (9 rows + 9 columns + 9 boxes)

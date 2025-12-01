@@ -2,8 +2,8 @@ use std::time::Instant;
 
 use rand::{Rng, seq::SliceRandom};
 
-use super::{SudokuBoard, SudokuDlxSolver, SudokuGraph};
-use crate::Board;
+use super::{SudokuBoard, SudokuDlxSolver};
+use crate::gamedef::GameDefinition;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SudokuGenerateError {
@@ -22,12 +22,11 @@ pub fn generate_solved_sudoku_board<R: Rng>(
 ) -> Result<SudokuBoard, SudokuGenerateError> {
     let mut solver = SudokuDlxSolver::new();
 
-    let mut board = Board::new(SudokuGraph::new().metadata);
-    let mut sudoku_board = SudokuBoard::empty();
+    let mut board = SudokuBoard::new();
 
     // Shuffle the cell indexes so that the board is filled in a random order.
     let indexes = {
-        let mut v = (0..SudokuGraph::NUM_CELLS).collect::<Vec<usize>>();
+        let mut v = (0..board.num_cells()).collect::<Vec<usize>>();
         v.shuffle(rng);
         v
     };
@@ -43,11 +42,8 @@ pub fn generate_solved_sudoku_board<R: Rng>(
             board
                 .set_value(index, possible_value_for_cell)
                 .expect("value was already known to be possible");
-            sudoku_board
-                .set_value(index, Some(possible_value_for_cell))
-                .expect("value was already known to be possible");
 
-            let solutions = solver.solve_with_limit(&sudoku_board, Some(2));
+            let solutions = solver.solve_with_limit(&board, Some(2));
             if !solutions.is_empty() {
                 // If there is at least one possible solution with this value at this cell, then
                 // this placement was successful so break and continue with next cell.
@@ -60,7 +56,6 @@ pub fn generate_solved_sudoku_board<R: Rng>(
             board
                 .reset_value(index)
                 .expect("restore cell value to original value");
-            sudoku_board.clear(index);
         }
 
         if !placed_value {
@@ -68,7 +63,7 @@ pub fn generate_solved_sudoku_board<R: Rng>(
         }
     }
 
-    Ok(sudoku_board)
+    Ok(board)
 }
 
 /// Generate a Sudoku puzzle by attempting to remove up to the specified number of clues
@@ -81,7 +76,7 @@ pub fn remove_given_values_from_board<R: Rng>(
 ) -> Result<SudokuBoard, SudokuGenerateError> {
     let mut solver = SudokuDlxSolver::new();
 
-    if max_num_values_to_remove == 0 || max_num_values_to_remove >= SudokuGraph::NUM_CELLS {
+    if max_num_values_to_remove == 0 || max_num_values_to_remove >= board.num_cells() {
         return Err(SudokuGenerateError::InvalidNumberOfRequestedRemovals);
     }
 
@@ -89,7 +84,7 @@ pub fn remove_given_values_from_board<R: Rng>(
 
     // Shuffle the cell indexes so that the clues are removed in a random order.
     let indexes = {
-        let mut v = (0..SudokuGraph::NUM_CELLS).collect::<Vec<usize>>();
+        let mut v = (0..board.num_cells()).collect::<Vec<usize>>();
         v.shuffle(rng);
         v
     };
@@ -97,9 +92,9 @@ pub fn remove_given_values_from_board<R: Rng>(
     let mut num_values_removed = 0usize;
     for index in indexes {
         let prior_value = board
-            .value(index)
+            .get_value(index)
             .ok_or(SudokuGenerateError::IncompleteSuokduBoard)?;
-        board.clear(index);
+        board.reset_value(index).unwrap();
 
         log::debug!("Trying removal of value {prior_value} in cell index {index}.");
 
@@ -124,7 +119,7 @@ pub fn remove_given_values_from_board<R: Rng>(
                 "Removal failed due to no unique solution existing. (Duration: {uniqueness_check_duration:?})"
             );
             board
-                .set_value(index, Some(prior_value))
+                .set_value(index, prior_value)
                 .expect("restoring original value");
         }
     }
@@ -164,7 +159,7 @@ mod tests {
 
         assert_eq!(
             puzzle.given_indices().count(),
-            SudokuGraph::NUM_CELLS - num_clues_to_remove
+            puzzle.num_cells() - num_clues_to_remove
         );
 
         let mut solver = SudokuDlxSolver::new();

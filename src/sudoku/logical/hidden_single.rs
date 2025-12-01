@@ -1,22 +1,26 @@
 //! Hidden single solving strategy.
 
-use crate::board::{Board, SolveStrategy, SolverMove};
 use std::collections::HashSet;
 use std::num::NonZeroU8;
+
+use crate::board::{Board, SolveStrategy, SolverMove};
+use crate::gamedef::GameDefinition;
 
 /// Strategy that finds values that can only go in one cell within a zone (hidden singles).
 pub struct HiddenSingleSolveStrategy;
 
-impl SolveStrategy for HiddenSingleSolveStrategy {
+impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
+    for HiddenSingleSolveStrategy
+{
     /// Finds all values that can only go in one cell within each zone.
-    fn compute_solver_moves(board: &Board) -> Vec<SolverMove> {
+    fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove> {
         let mut moves = Vec::new();
         let mut seen_moves = HashSet::new();
-        let metadata = board.metadata();
 
         // For each zone, check each value
-        for zone in &metadata.zones {
-            for value in 1..=metadata.num_values as u8 {
+        for zone_index in 0..board.num_zones() {
+            let zone = board.get_cells_for_zone(zone_index).unwrap();
+            for value in 1..=board.num_values() {
                 let mut possible_cells = Vec::new();
 
                 // Find all cells in this zone where this value is possible.
@@ -57,28 +61,22 @@ impl SolveStrategy for HiddenSingleSolveStrategy {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::sudoku::{SudokuBoard, SudokuGraph};
     use std::collections::HashSet;
 
-    fn make_sudoku_metadata() -> crate::sudoku::ZoneMetadata {
-        SudokuGraph::new().metadata
-    }
+    use super::*;
+    use crate::sudoku::SudokuBoard;
 
     #[test]
     fn test_hidden_single_empty_board() {
-        let metadata = make_sudoku_metadata();
-        let board = Board::new(metadata);
-
-        // Empty board has no hidden singles
+        // An empty board has no hidden singles.
+        let board = SudokuBoard::new();
         let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
         assert_eq!(moves.len(), 0);
     }
 
     #[test]
     fn test_hidden_single_in_row() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Set up a situation where value 9 can only go in one cell in row 0
         // Fill cells in row 0 with values 1-8, leaving cells 0 and 8 empty
@@ -108,8 +106,7 @@ mod tests {
         // Fill most of box 0, leaving only cells 0 and 1
         // Then eliminate 9 from cell 0
 
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Fill box 0 (cells: 0, 1, 2, 9, 10, 11, 18, 19, 20) except cells 0 and 1
         board.set_value(2, 1).unwrap();
@@ -140,8 +137,7 @@ mod tests {
 
     #[test]
     fn test_hidden_single_vs_naked_single() {
-        let metadata = make_sudoku_metadata();
-        let mut board = Board::new(metadata);
+        let mut board = SudokuBoard::new();
 
         // Create a naked single (cell with only one possibility)
         // Fill row 0 except cell 0
@@ -163,8 +159,6 @@ mod tests {
 
     #[test]
     fn test_strategies_with_real_puzzle() {
-        let metadata = make_sudoku_metadata();
-
         // A real Sudoku puzzle
         let puzzle_str = "\
             530070000\
@@ -177,8 +171,7 @@ mod tests {
             000419005\
             000080079";
 
-        let sudoku: SudokuBoard = puzzle_str.parse().unwrap();
-        let board = Board::from_sudoku_board(&sudoku, metadata).unwrap();
+        let board = SudokuBoard::from_puzzle_str(puzzle_str).unwrap();
 
         let hidden_singles = HiddenSingleSolveStrategy::compute_solver_moves(&board);
         assert!(
@@ -186,7 +179,6 @@ mod tests {
             "Puzzle should produce at least one hidden single"
         );
 
-        let metadata = board.metadata();
         let unique_moves: HashSet<(usize, u8)> = hidden_singles
             .iter()
             .map(|m| (m.index, m.value.get()))
@@ -269,8 +261,8 @@ mod tests {
             // in at least one zone containing this cell.
             let mut found_zone_with_unique_placement = false;
 
-            for &zone_index in &metadata.zones_for_cell[mov.index] {
-                let zone = &metadata.zones[zone_index];
+            for &zone_index in board.get_zones_for_cell(mov.index).unwrap() {
+                let zone = board.get_cells_for_zone(zone_index).unwrap();
                 let mut cells_where_value_possible = Vec::new();
 
                 for &cell_index in zone {
