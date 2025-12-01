@@ -6,134 +6,74 @@
 //! The Dlx constaint matrix uses 324 columns arranged as 81 cell-occupancy constraints followed by
 //! 27 zones × 9 digits each enforcing that every digit appears exactly once per zone.
 
-use std::{borrow::Cow, collections::HashSet, fmt, num::NonZeroU8, str::FromStr};
+use std::{borrow::Cow, fmt, num::NonZeroU8, str::FromStr};
+use std::sync::{Arc, OnceLock};
 
+use crate::Board;
 use crate::dlx::{Dlx, SolveAction};
+use crate::gamedef::GenericGameDefinition;
 
 pub mod generate;
 pub mod logical;
 
-/// Metadata describing the constraint graph for a Sudoku-like puzzle.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ZoneMetadata {
-    // Total number of cells in the game.
-    pub num_cells: usize,
+pub type SudokuBoard = Board<SudokuGameDefinition, 81>;
 
-    // Number of values allowed in the same (e.g, for Sudoku 1-9 are the values).
-    pub num_values: usize,
-
-    // Define each zone by the cell indices for that zone.
-    pub zones: Vec<Vec<usize>>,
-
-    /// For each cell, the list of other cells that share at least one zone.
-    pub neighbors_for_cell: Vec<Vec<usize>>,
-
-    /// For each cell, the zones the cell is a member of.
-    pub zones_for_cell: Vec<Vec<usize>>,
-}
-
-impl ZoneMetadata {
-    /// Builds derived neighbor and zone lookup tables for the provided zone definitions.
-    pub fn new(num_cells: usize, num_values: usize, zones: Vec<Vec<usize>>) -> ZoneMetadata {
-        let mut neighbor_sets: Vec<HashSet<usize>> = vec![HashSet::new(); num_cells];
-        let mut zones_for_cell_sets: Vec<HashSet<usize>> = vec![HashSet::new(); num_cells];
-
-        for (zone_index, zone_cells) in zones.iter().enumerate() {
-            for &cell in zone_cells {
-                assert!(
-                    cell < num_cells,
-                    "zone index {zone_index} references cell {cell} outside 0..{num_cells}"
-                );
-                zones_for_cell_sets[cell].insert(zone_index);
-            }
-
-            for &cell in zone_cells {
-                for &other in zone_cells {
-                    if cell != other {
-                        neighbor_sets[cell].insert(other);
-                    }
-                }
-            }
-        }
-
-        let neighbors_for_cell = neighbor_sets
-            .into_iter()
-            .map(|set| {
-                let mut neighbors: Vec<usize> = set.into_iter().collect();
-                neighbors.sort_unstable();
-                neighbors
-            })
-            .collect();
-
-        let zones_for_cell = zones_for_cell_sets
-            .into_iter()
-            .map(|set| {
-                let mut zone_list: Vec<usize> = set.into_iter().collect();
-                zone_list.sort_unstable();
-                zone_list
-            })
-            .collect();
-
-        ZoneMetadata {
-            num_cells,
-            num_values,
-            zones,
-            neighbors_for_cell,
-            zones_for_cell,
-        }
-    }
-}
-
+/// Sudoku game definition. The metadata contains the constraint graph for a Sudoku-like puzzle.
+#[derive(Clone, Debug)]
 /// Classic 9x9 Sudoku constraint graph.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SudokuGraph {
-    pub metadata: ZoneMetadata,
+pub struct SudokuGameDefinition {
+    gamedef: Arc<GenericGameDefinition>,
 }
 
-impl SudokuGraph {
+impl SudokuGameDefinition {
     pub const NUM_CELLS: usize = 9 * 9;
-    pub const NUM_VALUES: usize = 9;
+    pub const NUM_VALUES: u8 = 9;
     pub const NUM_ZONES: usize = 27;
 
     /// Returns metadata for a standard 9x9 Sudoku puzzle (rows, columns, 3x3 boxes).
-    pub fn new() -> SudokuGraph {
-        let mut zones: Vec<Vec<usize>> = Vec::with_capacity(Self::NUM_ZONES);
+    pub fn new() -> Self {
+        static GAMEDEF: OnceLock<Arc<GenericGameDefinition>> = OnceLock::new();
+        let gamedef = GAMEDEF.get_or_init(|| {
+            let mut zones: Vec<Vec<usize>> = Vec::with_capacity(Self::NUM_ZONES);
 
-        // Row zones.
-        for row in 0..9 {
-            let mut zone = Vec::with_capacity(9);
-            for column in 0..9 {
-                zone.push(row * 9 + column);
-            }
-            zones.push(zone);
-        }
-
-        // Column zones.
-        for column in 0..9 {
-            let mut zone = Vec::with_capacity(9);
+            // Row zones.
             for row in 0..9 {
-                zone.push(row * 9 + column);
-            }
-            zones.push(zone);
-        }
-
-        // 3x3 box zones.
-        for box_row in 0..3 {
-            for box_col in 0..3 {
                 let mut zone = Vec::with_capacity(9);
-                let row_origin = box_row * 3;
-                let col_origin = box_col * 3;
-                for row in 0..3 {
-                    for col in 0..3 {
-                        zone.push((row_origin + row) * 9 + (col_origin + col));
-                    }
+                for column in 0..9 {
+                    zone.push(row * 9 + column);
                 }
                 zones.push(zone);
             }
-        }
 
-        let metadata = ZoneMetadata::new(Self::NUM_CELLS, Self::NUM_VALUES, zones);
-        SudokuGraph { metadata }
+            // Column zones.
+            for column in 0..9 {
+                let mut zone = Vec::with_capacity(9);
+                for row in 0..9 {
+                    zone.push(row * 9 + column);
+                }
+                zones.push(zone);
+            }
+
+            // 3x3 box zones.
+            for box_row in 0..3 {
+                for box_col in 0..3 {
+                    let mut zone = Vec::with_capacity(9);
+                    let row_origin = box_row * 3;
+                    let col_origin = box_col * 3;
+                    for row in 0..3 {
+                        for col in 0..3 {
+                            zone.push((row_origin + row) * 9 + (col_origin + col));
+                        }
+                    }
+                    zones.push(zone);
+                }
+            }
+
+            let gamedef = GenericGameDefinition::new(Self::NUM_CELLS, Self::NUM_VALUES, zones);
+            Arc::new(gamedef)
+        });
+
+        Self { gamedef: Arc::clone(gamedef) }
     }
 }
 

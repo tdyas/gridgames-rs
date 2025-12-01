@@ -7,32 +7,27 @@ use std::collections::HashMap;
 use std::num::NonZeroU8;
 use std::sync::Arc;
 
-use crate::sudoku::{SudokuBoard, ZoneMetadata};
+use crate::{gamedef::GameDefinition, sudoku::{SudokuBoard, ZoneMetadata}};
 
 /// Compute the next set of solver moves for a particular [`Board`]. This is
 /// implemented by each strategy.
-pub trait SolveStrategy<GD: GameDefinition> {
+pub trait SolveStrategy<GD: GameDefinition, const CAPACITY: usize> {
     /// Return a set of possible moves given the represented strategy.
-    fn compute_solver_moves(board: &Board<GD>) -> Vec<SolverMove>;
-}
-
-trait GameDefinition {
-    /// Number of cells used for the game.
-    const NUM_CELLS: usize;
+    fn compute_solver_moves(board: &Board<GD, CAPACITY>) -> Vec<SolverMove>;
 }
 
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
 #[derive(Clone, Debug)]
-pub struct Board<GD: GameDefinition> {
+pub struct Board<GD: GameDefinition, const CAPACITY: usize> {
     /// Reference to the constraint graph defining game rules
-    metadata: Arc<GD>,
+    gamedef: Arc<GD>,
 
-    /// Cell values: None = empty, Some(v) = filled with value v (1-N)
-    values: Vec<Option<NonZeroU8>>,
+    /// Cell values: None = empty, Some(v) = filled with value v (1-N).
+    values: [Option<NonZeroU8>; CAPACITY],
 
     /// Bitmask of possible values per cell (bit i = value i+1 is possible)
-    possible: Vec<u32>,
+    possible: [u32; CAPACITY],
 
     /// Count of unfilled cells per zone
     zone_counts: Vec<usize>,
@@ -73,25 +68,24 @@ pub enum FindResult {
     Contradiction,
 }
 
-impl<GD: GameDefinition> Board<GD> {
+impl<GD: GameDefinition, const CAPACITY: usize> Board<GD, CAPACITY> {
     /// Creates a new empty board with the given zone graph.
-    pub fn new(metadata: ZoneMetadata) -> Self {
-        let metadata = Arc::new(metadata);
-        let num_cells = metadata.num_cells;
-        let num_zones = metadata.zones.len();
-        let all_values_mask = (1 << metadata.num_values) - 1;
+    pub fn new(gamedef: GD) -> Self {
+        let num_zones = gamedef.num_zones();
+        let all_values_mask = (1 << gamedef.num_values()) - 1;
 
         // Initialize zone counts - each zone starts with all cells unfilled
         let mut zone_counts = Vec::with_capacity(num_zones);
-        for zone in &metadata.zones {
+        for zone_index in 0..num_zones {
+            let zone = gamedef.get_cells_for_zone(zone_index).expect("invalid zone index?");
             zone_counts.push(zone.len());
         }
 
         Board {
-            metadata,
-            values: vec![None; num_cells],
-            possible: vec![all_values_mask; num_cells],
-            zone_counts,
+            gamedef: Arc::new(gamedef),
+            values: [None; CAPACITY],
+            possible: [all_values_mask; CAPACITY],
+            zone_counts: vec![],
             num_set_cells: 0,
             stats: HashMap::new(),
             moves: Vec::new(),
@@ -104,16 +98,16 @@ impl<GD: GameDefinition> Board<GD> {
     /// # Panics
     /// Panics if the length of `values` does not match `metadata.num_cells`, or if any
     /// value would create an invalid board state.
-    pub fn from_values(metadata: ZoneMetadata, values: &[Option<u8>]) -> Result<Self, String> {
+    pub fn from_values(gamedef: GD, values: &[Option<u8>]) -> Result<Self, String> {
         assert_eq!(
             values.len(),
-            metadata.num_cells,
+            gamedef.num_cells(),
             "Expected {} values, got {}",
-            metadata.num_cells,
+            gamedef.num_cells(),
             values.len()
         );
 
-        let mut board = Self::new(metadata);
+        let mut board = Self::new(gamedef);
         for (index, &value) in values.iter().enumerate() {
             if let Some(v) = value {
                 board.set_value(index, v)?;
@@ -126,17 +120,17 @@ impl<GD: GameDefinition> Board<GD> {
     /// Returns an error if the value is invalid or creates a contradiction.
     pub fn set_value(&mut self, index: usize, value: u8) -> Result<(), String> {
         // Validate inputs
-        if index >= self.metadata.num_cells {
+        if index >= self.gamedef.num_cells() {
             return Err(format!("index {} out of bounds", index));
         }
-        if value == 0 || value > self.metadata.num_values as u8 {
+        if value == 0 || value > self.gamedef.num_values() {
             return Err(format!(
                 "value {} out of range 1..={}",
-                value, self.metadata.num_values
+                value, self.gamedef.num_values()
             ));
         }
 
-        // Check if value is possible
+        // Check if the value is possible given current cell assignments.
         let value_bit = 1 << (value - 1);
         if self.possible[index] & value_bit == 0 {
             return Err(format!("value {} not possible at index {}", value, index));
@@ -150,7 +144,7 @@ impl<GD: GameDefinition> Board<GD> {
             self.num_set_cells += 1;
 
             // Update zone counts
-            for &zone_index in &self.metadata.zones_for_cell[index] {
+            for &zone_index in self.gamedef.get_zones_for_cell(index)? {
                 self.zone_counts[zone_index] -= 1;
             }
         }
@@ -159,7 +153,7 @@ impl<GD: GameDefinition> Board<GD> {
         self.possible[index] = 0; // No other values possible
 
         // Update all neighbors - remove this value from their possibility sets
-        for &neighbor_index in &self.metadata.neighbors_for_cell[index] {
+        for &neighbor_index in self.gamedef.get_neighbors_for_cell(index).unwrap() {
             self.possible[neighbor_index] &= !value_bit;
         }
 
@@ -168,7 +162,7 @@ impl<GD: GameDefinition> Board<GD> {
 
     /// Clears a cell value and recalculates constraints
     pub fn reset_value(&mut self, index: usize) -> Result<(), String> {
-        if index >= self.metadata.num_cells {
+        if index >= self.gamedef.num_cells() {
             return Err(format!("index {} out of bounds", index));
         }
 
@@ -176,17 +170,17 @@ impl<GD: GameDefinition> Board<GD> {
             self.values[index] = None;
             self.num_set_cells -= 1;
 
-            // Update zone counts
-            for &zone_index in &self.metadata.zones_for_cell[index] {
+            // Update the zone's count of unfilled cells.
+            for &zone_index in self.gamedef.get_zones_for_cell(index).unwrap() {
                 self.zone_counts[zone_index] += 1;
             }
 
-            // Recalculate possible values for this cell
+            // Recalculate the possible values for this cell.
             self.recalculate_possible(index);
 
-            // Recalculate possible values for all neighbors
-            // Clone the neighbor list to avoid borrow checker issues
-            let neighbors: Vec<usize> = self.metadata.neighbors_for_cell[index].clone();
+            // Recalculate possible values for all neighboring cells as well.
+            // Clone the neighbor list to avoid borrow checker issues.
+            let neighbors = self.gamedef.get_neighbors_for_cell(index).unwrap().to_vec();
             for neighbor_index in neighbors {
                 self.recalculate_possible(neighbor_index);
             }
@@ -202,11 +196,11 @@ impl<GD: GameDefinition> Board<GD> {
             return;
         }
 
-        // Start with all values possible
-        let mut mask = (1 << self.metadata.num_values) - 1;
+        // Start with all values possible.
+        let mut mask = (1 << self.gamedef.num_values()) - 1;
 
-        // Remove values used by neighbors
-        for &neighbor_index in &self.metadata.neighbors_for_cell[index] {
+        // Remove values used by neighbors.
+        for &neighbor_index in self.gamedef.get_neighbors_for_cell(index).unwrap() {
             if let Some(neighbor_value) = self.values[neighbor_index] {
                 mask &= !(1 << (neighbor_value.get() - 1));
             }
@@ -214,8 +208,6 @@ impl<GD: GameDefinition> Board<GD> {
 
         self.possible[index] = mask;
     }
-
-    // ===== Querying State =====
 
     /// Gets the value at a cell (None = empty, Some(v) = filled with value v)
     pub fn get_value(&self, index: usize) -> Option<u8> {
@@ -245,7 +237,7 @@ impl<GD: GameDefinition> Board<GD> {
 
     /// Checks if a specific value is possible at a cell
     pub fn is_value_possible(&self, index: usize, value: u8) -> bool {
-        if value == 0 || value > self.metadata.num_values as u8 {
+        if value == 0 || value > self.gamedef.num_values() {
             return false;
         }
         let value_bit = 1 << (value - 1);
@@ -255,7 +247,7 @@ impl<GD: GameDefinition> Board<GD> {
     /// Gets the list of possible values for a cell as a Vec
     pub fn get_possible_values(&self, index: usize) -> Vec<u8> {
         let mask = self.get_possible(index);
-        (0..self.metadata.num_values)
+        (0..self.gamedef.num_values())
             .filter(|&i| mask & (1 << i) != 0)
             .map(|i| (i + 1) as u8)
             .collect()
@@ -269,7 +261,7 @@ impl<GD: GameDefinition> Board<GD> {
     /// - `FindResult::Contradiction` if the board has an unsolvable contradiction
     /// - `FindResult::Found(index)` with the cell index having the fewest possibilities
     pub fn find_index_with_least_possibilities(&self) -> FindResult {
-        if self.num_set_cells == self.metadata.num_cells {
+        if self.num_set_cells == self.gamedef.num_cells() {
             return FindResult::Solved;
         }
 
@@ -357,13 +349,15 @@ impl<GD: GameDefinition> Board<GD> {
     // ===== Metadata Access =====
 
     /// Gets the number of cells in the board
+    #[inline]
     pub fn num_cells(&self) -> usize {
-        self.metadata.num_cells
+        self.gamedef.num_cells()
     }
 
     /// Gets the number of possible values (1-N)
+    #[inline]
     pub fn num_values(&self) -> usize {
-        self.metadata.num_values
+        self.gamedef.num_values() as usize   // TODO: Fix this type.
     }
 
     /// Gets the number of filled cells
@@ -372,43 +366,13 @@ impl<GD: GameDefinition> Board<GD> {
     }
 
     /// Gets the constraint metadata (graph)
-    pub fn metadata(&self) -> &Arc<ZoneMetadata> {
-        &self.metadata
+    pub fn get_gamedef(&self) -> &Arc<GD> {
+        &self.gamedef
     }
 
     /// Gets the count of unfilled cells in a specific zone
     pub fn zone_count(&self, zone_index: usize) -> usize {
         self.zone_counts.get(zone_index).copied().unwrap_or(0)
-    }
-
-    // ===== SudokuBoard Integration =====
-
-    /// Creates a Board from a SudokuBoard (9x9 specific)
-    pub fn from_sudoku_board(board: &SudokuBoard, metadata: ZoneMetadata) -> Result<Board, String> {
-        if metadata.num_cells != 81 {
-            return Err("SudokuBoard requires 81-cell metadata".to_string());
-        }
-
-        let mut b = Board::new(metadata);
-        for index in 0..81 {
-            if let Some(value) = board.value(index) {
-                b.set_value(index, value)?;
-            }
-        }
-        Ok(b)
-    }
-
-    /// Converts to a SudokuBoard (9x9 specific)
-    pub fn to_sudoku_board(&self) -> Result<SudokuBoard, String> {
-        if self.metadata.num_cells != 81 {
-            return Err("SudokuBoard requires 81 cells".to_string());
-        }
-
-        let mut board = SudokuBoard::empty();
-        for (index, &value) in self.values.iter().enumerate() {
-            board.set_value(index, value.map(|v| v.get()))?;
-        }
-        Ok(board)
     }
 
     // ===== Debug Support =====
@@ -419,11 +383,11 @@ impl<GD: GameDefinition> Board<GD> {
         println!("=== {} ===", message);
         println!(
             "Cells set: {}/{}",
-            self.num_set_cells, self.metadata.num_cells
+            self.num_set_cells, self.gamedef.num_cells()
         );
 
         // Print values grid (assuming square grid for formatting)
-        let side = (self.metadata.num_cells as f64).sqrt() as usize;
+        let side = (self.gamedef.num_cells() as f64).sqrt() as usize;
         println!("\nValues:");
         for row in 0..side {
             for col in 0..side {
