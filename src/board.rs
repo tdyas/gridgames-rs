@@ -210,9 +210,9 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
             self.recalculate_possible(index);
 
             // Recalculate possible values for all neighboring cells as well.
-            // Clone the neighbor list to avoid borrow checker issues.
-            let neighbors = self.gamedef.get_neighbors_for_cell(index).unwrap().to_vec();
-            for neighbor_index in neighbors {
+            // Clone the Arc to avoid holding an immutable borrow of `self` while mutating.
+            let gamedef = Arc::clone(&self.gamedef);
+            for &neighbor_index in gamedef.get_neighbors_for_cell(index).unwrap() {
                 self.recalculate_possible(neighbor_index);
             }
         }
