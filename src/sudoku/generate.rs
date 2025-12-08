@@ -33,14 +33,14 @@ pub fn generate_solved_sudoku_board<R: Rng>(
 
     for index in indexes {
         // Get a list of possible values at the current index and shuffle for randomness.
-        let mut possible_values_for_cell = board.get_possible_values(index);
+        let mut possible_values_for_cell = board.get_possible_values_for_cell(index);
         possible_values_for_cell.shuffle(rng);
 
         // Try placing each possible value in the cell until there is at least one valid solution.
         let mut placed_value = false;
         for possible_value_for_cell in possible_values_for_cell {
             board
-                .set_value(index, possible_value_for_cell)
+                .set_cell(index, possible_value_for_cell)
                 .expect("value was already known to be possible");
 
             let solutions = solver.solve_with_limit(&board, Some(2));
@@ -54,7 +54,7 @@ pub fn generate_solved_sudoku_board<R: Rng>(
             // If the placement failed because there are no solutions, then clear the cell
             // and continue with trying possible values.
             board
-                .reset_value(index)
+                .clear_cell(index)
                 .expect("restore cell value to original value");
         }
 
@@ -92,9 +92,9 @@ pub fn remove_given_values_from_board<R: Rng>(
     let mut num_values_removed = 0usize;
     for index in indexes {
         let prior_value = board
-            .get_value(index)
+            .get_cell(index)
             .ok_or(SudokuGenerateError::IncompleteSuokduBoard)?;
-        board.reset_value(index).unwrap();
+        board.clear_cell(index).unwrap();
 
         log::debug!("Trying removal of value {prior_value} in cell index {index}.");
 
@@ -119,7 +119,7 @@ pub fn remove_given_values_from_board<R: Rng>(
                 "Removal failed due to no unique solution existing. (Duration: {uniqueness_check_duration:?})"
             );
             board
-                .set_value(index, prior_value)
+                .set_cell(index, prior_value)
                 .expect("restoring original value");
         }
     }

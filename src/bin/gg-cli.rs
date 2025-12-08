@@ -156,7 +156,7 @@ fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
         let maybe_solved_board = SudokuBoard::from_puzzle_str(&solved_board)
             .map_err(|err| format!("Error while converting provided solved board: {err:?}"))?;
         if maybe_solved_board
-            .get_all_values()
+            .get_all_cell_values()
             .iter()
             .any(|v| v.is_none())
         {
@@ -223,7 +223,7 @@ fn format_board_with_zones(board: &SudokuBoard) -> String {
         for col in 0..9 {
             let idx = row * 9 + col;
             row_chars[col] = board
-                .get_value(idx)
+                .get_cell(idx)
                 .map(|digit| char::from(b'0' + digit))
                 .unwrap_or('.');
         }

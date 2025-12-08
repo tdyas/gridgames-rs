@@ -26,7 +26,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
                 // Find all cells in this zone where this value is possible.
                 for &cell_index in zone {
                     // Skip if cell is already filled
-                    if board.get_value(cell_index).is_some() {
+                    if board.get_cell(cell_index).is_some() {
                         continue;
                     }
 
@@ -41,7 +41,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
 
                     // Only record if this cell has multiple possibilities
                     // (if it has only one possibility, it's a naked single, not hidden).
-                    if board.count_possible(index) > 1
+                    if board.count_possible_values_for_cell(index) > 1
                         && let Some(nz_value) = NonZeroU8::new(value)
                         && seen_moves.insert((index, value))
                     {
@@ -81,11 +81,11 @@ mod tests {
         // Set up a situation where value 9 can only go in one cell in row 0
         // Fill cells in row 0 with values 1-8, leaving cells 0 and 8 empty
         for col in 1..8 {
-            board.set_value(col, col as u8).unwrap();
+            board.set_cell(col, col as u8).unwrap();
         }
 
         // Now eliminate 9 from cell 0 by placing 9 in the same column
-        board.set_value(9, 9).unwrap(); // Cell (1, 0) - same column as cell 0
+        board.set_cell(9, 9).unwrap(); // Cell (1, 0) - same column as cell 0
 
         // Now in row 0, only cell 8 can have value 9 (hidden single)
         let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
@@ -109,16 +109,16 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Fill box 0 (cells: 0, 1, 2, 9, 10, 11, 18, 19, 20) except cells 0 and 1
-        board.set_value(2, 1).unwrap();
-        board.set_value(9, 2).unwrap();
-        board.set_value(10, 3).unwrap();
-        board.set_value(11, 4).unwrap();
-        board.set_value(18, 5).unwrap();
-        board.set_value(19, 6).unwrap();
-        board.set_value(20, 7).unwrap();
+        board.set_cell(2, 1).unwrap();
+        board.set_cell(9, 2).unwrap();
+        board.set_cell(10, 3).unwrap();
+        board.set_cell(11, 4).unwrap();
+        board.set_cell(18, 5).unwrap();
+        board.set_cell(19, 6).unwrap();
+        board.set_cell(20, 7).unwrap();
 
         // Eliminate 9 from cell 0 by placing it in the same column
-        board.set_value(27, 9).unwrap(); // Cell (3, 0) - same column as cell 0
+        board.set_cell(27, 9).unwrap(); // Cell (3, 0) - same column as cell 0
 
         // Now 9 can only go in cell 1 within box 0 (hidden single)
         let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
@@ -142,7 +142,7 @@ mod tests {
         // Create a naked single (cell with only one possibility)
         // Fill row 0 except cell 0
         for col in 1..9 {
-            board.set_value(col, col as u8).unwrap();
+            board.set_cell(col, col as u8).unwrap();
         }
 
         // Cell 0 now has only one possibility (9), which is a naked single
@@ -239,7 +239,7 @@ mod tests {
             );
 
             // Verify it's not a naked single (cell should have multiple possibilities).
-            let possible_count = board.count_possible(mov.index);
+            let possible_count = board.count_possible_values_for_cell(mov.index);
             assert!(
                 possible_count > 1,
                 "Cell {} should have multiple possibilities (has {}), not be a naked single",
@@ -248,7 +248,7 @@ mod tests {
             );
 
             // Verify the value is actually one of the possible values.
-            let possible_values = board.get_possible_values(mov.index);
+            let possible_values = board.get_possible_values_for_cell(mov.index);
             assert!(
                 possible_values.contains(&mov.value.get()),
                 "Value {} should be in possible values {:?} for cell {}",
@@ -266,7 +266,7 @@ mod tests {
                 let mut cells_where_value_possible = Vec::new();
 
                 for &cell_index in zone {
-                    if board.get_value(cell_index).is_none()
+                    if board.get_cell(cell_index).is_none()
                         && board.is_value_possible(cell_index, mov.value.get())
                     {
                         cells_where_value_possible.push(cell_index);

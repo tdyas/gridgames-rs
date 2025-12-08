@@ -18,11 +18,11 @@ impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
 
         for index in 0..board.num_cells() {
             // Skip cells that are already filled
-            if board.get_value(index).is_some() {
+            if board.get_cell(index).is_some() {
                 continue;
             }
 
-            let possible_values = board.get_possible_values(index);
+            let possible_values = board.get_possible_values_for_cell(index);
             if possible_values.len() == 1 {
                 let value = possible_values[0];
                 if let Some(nz_value) = NonZeroU8::new(value) {
@@ -60,7 +60,7 @@ mod tests {
 
         // Fill row 0 except cell 0, leaving only one possibility (9) for cell 0.
         for col in 1..9 {
-            board.set_value(col, col as u8).unwrap();
+            board.set_cell(col, col as u8).unwrap();
         }
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
@@ -113,7 +113,7 @@ mod tests {
                 mov.index,
                 mov.value.get()
             );
-            let possible = board.get_possible_values(mov.index);
+            let possible = board.get_possible_values_for_cell(mov.index);
             assert_eq!(
                 possible.len(),
                 1,
