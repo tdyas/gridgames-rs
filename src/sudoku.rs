@@ -187,7 +187,7 @@ impl SudokuDlxSolver {
         self.dlx.clear_solution();
 
         for cell_index in board.given_indices() {
-            if let Some(value) = board.get_value(cell_index) {
+            if let Some(value) = board.get_cell(cell_index) {
                 let row_index = Self::row_index_for_assignment(
                     cell_index,
                     value,
@@ -201,9 +201,9 @@ impl SudokuDlxSolver {
             let mut solved = board.clone();
             for row_index in solution_rows {
                 let (cell_index, digit) = self.row_assignments[row_index];
-                if solved.get_value(cell_index).is_none() {
+                if solved.get_cell(cell_index).is_none() {
                     solved
-                        .set_value(cell_index, digit)
+                        .set_cell(cell_index, digit)
                         .expect("solver should only emit valid digits");
                 }
             }
@@ -268,10 +268,10 @@ mod tests {
             000419005\
             000080079";
         let board = SudokuBoard::from_puzzle_str(puzzle).expect("valid puzzle");
-        assert_eq!(board.get_value(0), Some(5));
-        assert_eq!(board.get_value(1), Some(3));
-        assert_eq!(board.get_value(2), None);
-        assert_eq!(board.get_value(80), Some(9));
+        assert_eq!(board.get_cell(0), Some(5));
+        assert_eq!(board.get_cell(1), Some(3));
+        assert_eq!(board.get_cell(2), None);
+        assert_eq!(board.get_cell(80), Some(9));
 
         let reconstructed = board.to_puzzle_string();
         let expected: String = puzzle
@@ -284,16 +284,16 @@ mod tests {
     #[test]
     fn board_set_value_validates_input() {
         let mut board = SudokuBoard::new();
-        assert!(board.set_value(10, 5).is_ok());
-        assert_eq!(board.get_value(10), Some(5));
+        assert!(board.set_cell(10, 5).is_ok());
+        assert_eq!(board.get_cell(10), Some(5));
 
-        assert!(board.reset_value(10).is_ok());
-        assert_eq!(board.get_value(10), None);
+        assert!(board.clear_cell(10).is_ok());
+        assert_eq!(board.get_cell(10), None);
 
-        let err = board.set_value(100, 1).unwrap_err();
+        let err = board.set_cell(100, 1).unwrap_err();
         assert!(err.contains("out of bounds"));
 
-        let err = board.set_value(0, 12).unwrap_err();
+        let err = board.set_cell(0, 12).unwrap_err();
         assert!(err.contains("out of range"));
     }
 
@@ -405,7 +405,7 @@ mod tests {
 
         solver.dlx.clear_solution();
         for cell_index in board.given_indices() {
-            if let Some(value) = board.get_value(cell_index) {
+            if let Some(value) = board.get_cell(cell_index) {
                 let row_index = SudokuDlxSolver::row_index_for_assignment(
                     cell_index,
                     value,
@@ -430,7 +430,7 @@ mod tests {
         for row_index in captured_rows {
             let (cell_index, digit) = solver.row_assignments[row_index];
 
-            if let Some(given_digit) = board.get_value(cell_index) {
+            if let Some(given_digit) = board.get_cell(cell_index) {
                 assert_eq!(given_digit, digit);
             }
 

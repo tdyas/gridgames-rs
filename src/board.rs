@@ -101,7 +101,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     /// # Panics
     /// Panics if the length of `values` does not match `metadata.num_cells`, or if any
     /// value would create an invalid board state.
-    pub fn from_values(values: &[Option<u8>]) -> Result<Self, String> {
+    pub fn from_cell_values(values: &[Option<u8>]) -> Result<Self, String> {
         let mut board = Self::new();
         assert_eq!(
             values.len(),
@@ -113,7 +113,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
 
         for (index, &value) in values.iter().enumerate() {
             if let Some(v) = value {
-                board.set_value(index, v)?;
+                board.set_cell(index, v)?;
             }
         }
         Ok(board)
@@ -133,7 +133,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
             if ch.is_ascii_digit() {
                 let value = (ch as u8) - b'0';
                 if value > 0 {
-                    board.set_value(index, value)?;
+                    board.set_cell(index, value)?;
                 }
             } else if ch != '.' && !ch.is_whitespace() {
                 return Err(format!("Expected a digit or '.', instead got `{ch}`"));
@@ -144,7 +144,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
 
     /// Sets a cell to a specific value, propagating constraints to neighbors.
     /// Returns an error if the value is invalid or creates a contradiction.
-    pub fn set_value(&mut self, index: usize, value: u8) -> Result<(), String> {
+    pub fn set_cell(&mut self, index: usize, value: u8) -> Result<(), String> {
         // Validate inputs
         if index >= self.gamedef.num_cells() {
             return Err(format!("index {} out of bounds", index));
@@ -192,7 +192,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     }
 
     /// Clears a cell value and recalculates constraints
-    pub fn reset_value(&mut self, index: usize) -> Result<(), String> {
+    pub fn clear_cell(&mut self, index: usize) -> Result<(), String> {
         if index >= self.gamedef.num_cells() {
             return Err(format!("index {} out of bounds", index));
         }
@@ -241,29 +241,29 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     }
 
     /// Gets the value at a cell (None = empty, Some(v) = filled with value v)
-    pub fn get_value(&self, index: usize) -> Option<u8> {
+    pub fn get_cell(&self, index: usize) -> Option<u8> {
         self.values.get(index).and_then(|v| v.map(|nz| nz.get()))
     }
 
     /// Checks if a cell is empty
-    pub fn is_empty(&self, index: usize) -> bool {
+    pub fn is_cell_empty(&self, index: usize) -> bool {
         self.values.get(index).map(|v| v.is_none()).unwrap_or(true)
     }
 
     /// Gets all cell values as a flat array (None = empty, Some(v) = filled with value v)
-    pub fn get_all_values(&self) -> Vec<Option<u8>> {
+    pub fn get_all_cell_values(&self) -> Vec<Option<u8>> {
         self.values.iter().map(|v| v.map(|nz| nz.get())).collect()
     }
 
     /// Gets the bitmask of possible values for a cell
     /// Bit i represents whether value i+1 is possible
-    pub fn get_possible(&self, index: usize) -> u32 {
+    pub fn get_possible_valus_mask_for_cell(&self, index: usize) -> u32 {
         self.possible.get(index).copied().unwrap_or(0)
     }
 
     /// Gets the count of possible values for a cell
-    pub fn count_possible(&self, index: usize) -> u32 {
-        self.get_possible(index).count_ones()
+    pub fn count_possible_values_for_cell(&self, index: usize) -> usize {
+        self.get_possible_valus_mask_for_cell(index).count_ones() as usize
     }
 
     /// Checks if a specific value is possible at a cell
@@ -272,12 +272,12 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
             return false;
         }
         let value_bit = 1 << (value - 1);
-        self.get_possible(index) & value_bit != 0
+        self.get_possible_valus_mask_for_cell(index) & value_bit != 0
     }
 
     /// Gets the list of possible values for a cell as a Vec
-    pub fn get_possible_values(&self, index: usize) -> Vec<u8> {
-        let mask = self.get_possible(index);
+    pub fn get_possible_values_for_cell(&self, index: usize) -> Vec<u8> {
+        let mask = self.get_possible_valus_mask_for_cell(index);
         (0..self.gamedef.num_values())
             .filter(|&i| mask & (1 << i) != 0)
             .map(|i| i + 1)
@@ -421,7 +421,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         for row in 0..side {
             for col in 0..side {
                 let idx = row * side + col;
-                match self.get_value(idx) {
+                match self.get_cell(idx) {
                     Some(val) => print!(" {} ", val),
                     None => print!(" . "),
                 }
@@ -434,8 +434,8 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         for row in 0..side {
             for col in 0..side {
                 let idx = row * side + col;
-                let count = self.count_possible(idx);
-                if self.is_empty(idx) {
+                let count = self.count_possible_values_for_cell(idx);
+                if self.is_cell_empty(idx) {
                     print!(" {} ", count);
                 } else {
                     print!(" - ");
@@ -505,15 +505,15 @@ mod tests {
 
         // All cells should be empty
         for i in 0..81 {
-            assert_eq!(board.get_value(i), None);
-            assert!(board.is_empty(i));
+            assert_eq!(board.get_cell(i), None);
+            assert!(board.is_cell_empty(i));
         }
 
         // All cells should have all 9 values possible
         for i in 0..81 {
-            assert_eq!(board.count_possible(i), 9);
+            assert_eq!(board.count_possible_values_for_cell(i), 9);
             let expected_mask = (1 << 9) - 1; // 0b111111111
-            assert_eq!(board.get_possible(i), expected_mask);
+            assert_eq!(board.get_possible_valus_mask_for_cell(i), expected_mask);
         }
     }
 
@@ -522,10 +522,10 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Set cell 0 (row 0, col 0) to value 5.
-        assert!(board.set_value(0, 5).is_ok());
-        assert_eq!(board.get_value(0), Some(5));
+        assert!(board.set_cell(0, 5).is_ok());
+        assert_eq!(board.get_cell(0), Some(5));
         assert_eq!(board.given_indices().count(), 1);
-        assert_eq!(board.count_possible(0), 0); // No other values possible
+        assert_eq!(board.count_possible_values_for_cell(0), 0); // No other values possible
 
         // Value 5 should be removed from all neighbors.
         // Check same row (cells 1-8)
@@ -550,7 +550,7 @@ mod tests {
 
         // Fill the first row with values 1-9
         for col in 0..9 {
-            board.set_value(col, (col + 1) as u8).unwrap();
+            board.set_cell(col, (col + 1) as u8).unwrap();
         }
 
         // All cells in row 0 should be filled
@@ -561,14 +561,14 @@ mod tests {
         assert!(!board.is_value_possible(9, 1));
 
         // Cell 1 (row 0, col 1) should have no possibilities
-        assert_eq!(board.count_possible(1), 0);
+        assert_eq!(board.count_possible_values_for_cell(1), 0);
     }
 
     #[test]
     fn test_set_value_invalid_index() {
         let mut board = SudokuBoard::new();
 
-        let result = board.set_value(100, 5);
+        let result = board.set_cell(100, 5);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("out of bounds"));
     }
@@ -578,12 +578,12 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Value 0 is invalid
-        let result = board.set_value(0, 0);
+        let result = board.set_cell(0, 0);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("out of range"));
 
         // Value 10 is invalid for Sudoku (max is 9)
-        let result = board.set_value(0, 10);
+        let result = board.set_cell(0, 10);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("out of range"));
     }
@@ -593,10 +593,10 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
-        board.set_value(0, 5).unwrap();
+        board.set_cell(0, 5).unwrap();
 
         // Try to set cell 1 (same row) to value 5 - should fail
-        let result = board.set_value(1, 5);
+        let result = board.set_cell(1, 5);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("not possible"));
     }
@@ -606,18 +606,18 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
-        board.set_value(0, 5).unwrap();
-        assert_eq!(board.get_value(0), Some(5));
+        board.set_cell(0, 5).unwrap();
+        assert_eq!(board.get_cell(0), Some(5));
         assert_eq!(board.given_indices().count(), 1);
 
         // Reset cell 0
-        board.reset_value(0).unwrap();
-        assert_eq!(board.get_value(0), None);
+        board.clear_cell(0).unwrap();
+        assert_eq!(board.get_cell(0), None);
         assert_eq!(board.given_indices().count(), 0);
-        assert!(board.is_empty(0));
+        assert!(board.is_cell_empty(0));
 
         // Cell 0 should have all values possible again
-        assert_eq!(board.count_possible(0), 9);
+        assert_eq!(board.count_possible_values_for_cell(0), 9);
 
         // Cell 1 should have value 5 possible again
         assert!(board.is_value_possible(1, 5));
@@ -631,11 +631,11 @@ mod tests {
         values[1] = Some(3);
         values[9] = Some(7);
 
-        let board = SudokuBoard::from_values(&values).unwrap();
+        let board = SudokuBoard::from_cell_values(&values).unwrap();
 
-        assert_eq!(board.get_value(0), Some(5));
-        assert_eq!(board.get_value(1), Some(3));
-        assert_eq!(board.get_value(9), Some(7));
+        assert_eq!(board.get_cell(0), Some(5));
+        assert_eq!(board.get_cell(1), Some(3));
+        assert_eq!(board.get_cell(9), Some(7));
         assert_eq!(board.given_indices().count(), 3);
 
         // Check constraint propagation happened
@@ -647,7 +647,7 @@ mod tests {
     #[should_panic(expected = "Expected 81 values, got 50")]
     fn test_from_values_wrong_length() {
         let values = vec![None; 50]; // Wrong length
-        let _ = SudokuBoard::from_values(&values).unwrap();
+        let _ = SudokuBoard::from_cell_values(&values).unwrap();
     }
 
     #[test]
@@ -655,14 +655,14 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Initially, all values 1-9 should be possible
-        let possible = board.get_possible_values(0);
+        let possible = board.get_possible_values_for_cell(0);
         assert_eq!(possible, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
         // Set cell 1 (same row) to value 5
-        board.set_value(1, 5).unwrap();
+        board.set_cell(1, 5).unwrap();
 
         // Cell 0 should not have 5 as a possibility
-        let possible = board.get_possible_values(0);
+        let possible = board.get_possible_values_for_cell(0);
         assert_eq!(possible, vec![1, 2, 3, 4, 6, 7, 8, 9]);
     }
 
@@ -676,12 +676,12 @@ mod tests {
 
         // Fill row 0 except cell 0
         for col in 1..9 {
-            board.set_value(col, col as u8).unwrap();
+            board.set_cell(col, col as u8).unwrap();
         }
 
         // Cell 0 should now have fewer possibilities
         // It can't be 1, 2, 3, 4, 5, 6, 7, or 8 (same row)
-        let count = board.count_possible(0);
+        let count = board.count_possible_values_for_cell(0);
         assert_eq!(count, 1); // Only value 9 is possible
 
         let result = board.find_index_with_least_possibilities();
@@ -700,7 +700,7 @@ mod tests {
         ];
 
         for (idx, &val) in solution.iter().enumerate() {
-            board.set_value(idx, val).unwrap();
+            board.set_cell(idx, val).unwrap();
         }
 
         let result = board.find_index_with_least_possibilities();
@@ -714,12 +714,12 @@ mod tests {
 
         // Create a contradiction by filling row 0 with 1-8
         for col in 0..8 {
-            board.set_value(col, (col + 1) as u8).unwrap();
+            board.set_cell(col, (col + 1) as u8).unwrap();
         }
 
         // Now fill column 8 with values 1-8 (different from row values)
         // This will make cell 8 (row 0, col 8) have no possibilities
-        board.set_value(17, 9).unwrap(); // Row 1, col 8
+        board.set_cell(17, 9).unwrap(); // Row 1, col 8
 
         // Fill the rest of column 8 to eliminate possibilities for cell 8
         for row in 2..9 {
@@ -727,7 +727,7 @@ mod tests {
             // Skip if value already used in row 0
             let val = if row == 2 { 1 } else { (row - 1) as u8 };
             if board.is_value_possible(idx, val) {
-                board.set_value(idx, val).unwrap();
+                board.set_cell(idx, val).unwrap();
             }
         }
 
@@ -782,12 +782,12 @@ mod tests {
     fn test_clone() {
         let mut board = SudokuBoard::new();
 
-        board.set_value(0, 5).unwrap();
+        board.set_cell(0, 5).unwrap();
         board.inc_stat("test");
 
         let board2 = board.clone();
 
-        assert_eq!(board2.get_value(0), Some(5));
+        assert_eq!(board2.get_cell(0), Some(5));
         assert_eq!(board2.get_stat("test"), 1);
         assert_eq!(board2.given_indices().count(), 1);
     }
@@ -803,7 +803,7 @@ mod tests {
         }
 
         // Set cell 0 (row 0, col 0, box 0) to value 5
-        board.set_value(0, 5).unwrap();
+        board.set_cell(0, 5).unwrap();
 
         // Zone 0 (row 0), zone 9 (col 0), and zone 18 (box 0) should each have 8 unfilled cells
         assert_eq!(board.zone_count(0), 8); // Row 0
