@@ -14,6 +14,10 @@ impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
 {
     /// Finds all cells that have exactly one possible value.
     fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove> {
+        if board.has_contradiction() {
+            return Vec::new();
+        }
+
         let mut moves = Vec::new();
 
         for index in 0..board.num_cells() {

@@ -181,6 +181,10 @@ impl SudokuDlxSolver {
         board: &SudokuBoard,
         limit: Option<usize>,
     ) -> Vec<SudokuBoard> {
+        if board.has_contradiction() {
+            return Vec::new();
+        }
+
         let max_solutions = limit.unwrap_or(usize::MAX);
         let mut solutions = Vec::new();
 

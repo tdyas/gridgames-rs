@@ -14,6 +14,10 @@ impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
 {
     /// Finds all values that can only go in one cell within each zone.
     fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove> {
+        if board.has_contradiction() {
+            return Vec::new();
+        }
+
         let mut moves = Vec::new();
         let mut seen_moves = HashSet::new();
 

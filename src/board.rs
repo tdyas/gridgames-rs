@@ -463,6 +463,11 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         self.conflicted_zone_total > 0
     }
 
+    /// Returns how many zones currently contain at least one conflicting value.
+    pub fn num_conflicted_zones(&self) -> usize {
+        self.conflicted_zone_total
+    }
+
     /// Returns the number of conflicting value entries in a zone (values set twice or more).
     pub fn zone_conflict_count(&self, zone_index: usize) -> u16 {
         self.zone_conflict_counts
