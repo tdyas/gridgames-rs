@@ -81,11 +81,11 @@ mod tests {
         // Set up a situation where value 9 can only go in one cell in row 0
         // Fill cells in row 0 with values 1-8, leaving cells 0 and 8 empty
         for col in 1..8 {
-            board.set_cell(col, col as u8).unwrap();
+            board.set_cell(col, col as u8);
         }
 
         // Now eliminate 9 from cell 0 by placing 9 in the same column
-        board.set_cell(9, 9).unwrap(); // Cell (1, 0) - same column as cell 0
+        board.set_cell(9, 9); // Cell (1, 0) - same column as cell 0
 
         // Now in row 0, only cell 8 can have value 9 (hidden single)
         let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
@@ -109,16 +109,16 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Fill box 0 (cells: 0, 1, 2, 9, 10, 11, 18, 19, 20) except cells 0 and 1
-        board.set_cell(2, 1).unwrap();
-        board.set_cell(9, 2).unwrap();
-        board.set_cell(10, 3).unwrap();
-        board.set_cell(11, 4).unwrap();
-        board.set_cell(18, 5).unwrap();
-        board.set_cell(19, 6).unwrap();
-        board.set_cell(20, 7).unwrap();
+        board.set_cell(2, 1);
+        board.set_cell(9, 2);
+        board.set_cell(10, 3);
+        board.set_cell(11, 4);
+        board.set_cell(18, 5);
+        board.set_cell(19, 6);
+        board.set_cell(20, 7);
 
         // Eliminate 9 from cell 0 by placing it in the same column
-        board.set_cell(27, 9).unwrap(); // Cell (3, 0) - same column as cell 0
+        board.set_cell(27, 9); // Cell (3, 0) - same column as cell 0
 
         // Now 9 can only go in cell 1 within box 0 (hidden single)
         let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
@@ -142,7 +142,7 @@ mod tests {
         // Create a naked single (cell with only one possibility)
         // Fill row 0 except cell 0
         for col in 1..9 {
-            board.set_cell(col, col as u8).unwrap();
+            board.set_cell(col, col as u8);
         }
 
         // Cell 0 now has only one possibility (9), which is a naked single

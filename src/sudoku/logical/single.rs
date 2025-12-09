@@ -60,7 +60,7 @@ mod tests {
 
         // Fill row 0 except cell 0, leaving only one possibility (9) for cell 0.
         for col in 1..9 {
-            board.set_cell(col, col as u8).unwrap();
+            board.set_cell(col, col as u8);
         }
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);

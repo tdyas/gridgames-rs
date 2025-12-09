@@ -29,6 +29,15 @@ pub struct Board<GD: GameDefinition + Default, const CAP: usize> {
     /// Bitmask of possible values per cell (bit i = value i+1 is possible)
     possible: [u32; CAP],
 
+    /// Count of each value in every zone (flattened: zone_index * num_values + value_index)
+    zone_value_counts: Vec<u16>,
+
+    /// Number of conflicting values (counts >= 2) per zone
+    zone_conflict_counts: Vec<u16>,
+
+    /// Total zones currently containing a conflict
+    conflicted_zone_total: usize,
+
     /// Count of unfilled cells per zone
     zone_counts: Vec<usize>,
 
@@ -74,6 +83,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         let gamedef = GD::default();
         let num_zones = gamedef.num_zones();
         let all_values_mask = (1 << gamedef.num_values()) - 1;
+        let num_values = gamedef.num_values() as usize;
 
         // Initialize zone counts - each zone starts with all cells unfilled
         let mut zone_counts = Vec::with_capacity(num_zones);
@@ -84,10 +94,16 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
             zone_counts.push(zone.len());
         }
 
+        let zone_value_counts = vec![0u16; num_zones * num_values];
+        let zone_conflict_counts = vec![0u16; num_zones];
+
         Board {
             gamedef: Arc::new(gamedef),
             values: [None; CAP],
             possible: [all_values_mask; CAP],
+            zone_value_counts,
+            zone_conflict_counts,
+            conflicted_zone_total: 0,
             zone_counts,
             num_set_cells: 0,
             stats: HashMap::new(),
@@ -99,8 +115,8 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     /// Values should be None for empty, Some(v) for filled cells with value v (1-N)
     ///
     /// # Panics
-    /// Panics if the length of `values` does not match `metadata.num_cells`, or if any
-    /// value would create an invalid board state.
+    /// Panics if the length of `values` does not match `metadata.num_cells`.
+    /// Conflicting assignments are allowed and tracked as zone conflicts.
     pub fn from_cell_values(values: &[Option<u8>]) -> Result<Self, String> {
         let mut board = Self::new();
         assert_eq!(
@@ -113,13 +129,14 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
 
         for (index, &value) in values.iter().enumerate() {
             if let Some(v) = value {
-                board.set_cell(index, v)?;
+                board.set_cell(index, v);
             }
         }
         Ok(board)
     }
 
     /// Creates a board from a puzzle string.
+    /// Conflicting assignments are allowed and recorded for contradiction detection.
     pub fn from_puzzle_str(values_str: &str) -> Result<Self, String> {
         let mut board = Self::new();
         assert_eq!(
@@ -133,7 +150,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
             if ch.is_ascii_digit() {
                 let value = (ch as u8) - b'0';
                 if value > 0 {
-                    board.set_cell(index, value)?;
+                    board.set_cell(index, value);
                 }
             } else if ch != '.' && !ch.is_whitespace() {
                 return Err(format!("Expected a digit or '.', instead got `{ch}`"));
@@ -143,40 +160,55 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     }
 
     /// Sets a cell to a specific value, propagating constraints to neighbors.
-    /// Returns an error if the value is invalid or creates a contradiction.
-    pub fn set_cell(&mut self, index: usize, value: u8) -> Result<(), String> {
-        // Validate inputs
-        if index >= self.gamedef.num_cells() {
-            return Err(format!("index {} out of bounds", index));
-        }
-        if value == 0 || value > self.gamedef.num_values() {
-            return Err(format!(
-                "value {} out of range 1..={}",
-                value,
-                self.gamedef.num_values()
-            ));
+    /// This operation is infallible; invalid indices or values will panic.
+    /// Conflicting assignments are permitted and recorded for contradiction detection.
+    pub fn set_cell(&mut self, index: usize, value: u8) {
+        assert!(
+            index < self.gamedef.num_cells(),
+            "index {} out of bounds",
+            index
+        );
+        assert!(
+            value >= 1 && value <= self.gamedef.num_values(),
+            "value {} out of range 1..={}",
+            value,
+            self.gamedef.num_values()
+        );
+
+        // If the cell already has this value, nothing to do.
+        if let Some(existing) = self.values[index] {
+            if existing.get() == value {
+                return;
+            }
+            // Replace an existing value by clearing first to keep counts consistent.
+            self.clear_cell(index)
+                .expect("clearing cell should succeed");
         }
 
-        // Check if the value is possible given current cell assignments.
         let value_bit = 1 << (value - 1);
-        if self.possible[index] & value_bit == 0 {
-            return Err(format!("value {} not possible at index {}", value, index));
-        }
-
-        // Convert to NonZeroU8 (safe because we validated value >= 1)
         let non_zero_value = NonZeroU8::new(value).unwrap();
 
         // Update cell value
         if self.values[index].is_none() {
             self.num_set_cells += 1;
 
-            // Update zone counts
+            // Update zone counts and conflict tracking
             for &zone_index in self
                 .gamedef
                 .get_zones_for_cell(index)
-                .map_err(|err| format!("set_value failed at index {index}{err:?}"))?
+                .expect("set_cell failed to get zones for cell")
             {
                 self.zone_counts[zone_index] -= 1;
+
+                let offset = self.zone_value_offset(zone_index, value);
+                let previous = self.zone_value_counts[offset];
+                self.zone_value_counts[offset] = previous + 1;
+                if previous == 1 {
+                    if self.zone_conflict_counts[zone_index] == 0 {
+                        self.conflicted_zone_total += 1;
+                    }
+                    self.zone_conflict_counts[zone_index] += 1;
+                }
             }
         }
 
@@ -187,8 +219,6 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         for &neighbor_index in self.gamedef.get_neighbors_for_cell(index).unwrap() {
             self.possible[neighbor_index] &= !value_bit;
         }
-
-        Ok(())
     }
 
     /// Clears a cell value and recalculates constraints
@@ -197,13 +227,25 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
             return Err(format!("index {} out of bounds", index));
         }
 
-        if self.values[index].is_some() {
+        if let Some(prev_value) = self.values[index] {
             self.values[index] = None;
             self.num_set_cells -= 1;
 
             // Update the zone's count of unfilled cells.
             for &zone_index in self.gamedef.get_zones_for_cell(index).unwrap() {
                 self.zone_counts[zone_index] += 1;
+
+                let offset = self.zone_value_offset(zone_index, prev_value.get());
+                let previous = self.zone_value_counts[offset];
+                debug_assert!(previous > 0, "clearing cell with zero count recorded");
+                self.zone_value_counts[offset] = previous - 1;
+
+                if previous == 2 {
+                    self.zone_conflict_counts[zone_index] -= 1;
+                    if self.zone_conflict_counts[zone_index] == 0 {
+                        self.conflicted_zone_total -= 1;
+                    }
+                }
             }
 
             // Recalculate the possible values for this cell.
@@ -238,6 +280,11 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         }
 
         self.possible[index] = mask;
+    }
+
+    #[inline]
+    fn zone_value_offset(&self, zone_index: usize, value: u8) -> usize {
+        zone_index * self.gamedef.num_values() as usize + (value as usize - 1)
     }
 
     /// Gets the value at a cell (None = empty, Some(v) = filled with value v)
@@ -311,6 +358,10 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     /// - `FindResult::Contradiction` if the board has an unsolvable contradiction
     /// - `FindResult::Found(index)` with the cell index having the fewest possibilities
     pub fn find_index_with_least_possibilities(&self) -> FindResult {
+        if self.has_zone_conflict() {
+            return FindResult::Contradiction;
+        }
+
         if self.num_set_cells == self.gamedef.num_cells() {
             return FindResult::Solved;
         }
@@ -346,6 +397,10 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
 
     /// Checks if the board has a contradiction (unsolvable state)
     pub fn has_contradiction(&self) -> bool {
+        if self.has_zone_conflict() {
+            return true;
+        }
+
         self.values
             .iter()
             .enumerate()
@@ -401,6 +456,19 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
     /// Gets the count of unfilled cells in a specific zone
     pub fn zone_count(&self, zone_index: usize) -> usize {
         self.zone_counts.get(zone_index).copied().unwrap_or(0)
+    }
+
+    /// Returns true if any zone currently contains duplicate values.
+    pub fn has_zone_conflict(&self) -> bool {
+        self.conflicted_zone_total > 0
+    }
+
+    /// Returns the number of conflicting value entries in a zone (values set twice or more).
+    pub fn zone_conflict_count(&self, zone_index: usize) -> u16 {
+        self.zone_conflict_counts
+            .get(zone_index)
+            .copied()
+            .unwrap_or(0)
     }
 
     // ===== Debug Support =====
@@ -522,7 +590,7 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Set cell 0 (row 0, col 0) to value 5.
-        assert!(board.set_cell(0, 5).is_ok());
+        board.set_cell(0, 5);
         assert_eq!(board.get_cell(0), Some(5));
         assert_eq!(board.given_indices().count(), 1);
         assert_eq!(board.count_possible_values_for_cell(0), 0); // No other values possible
@@ -550,7 +618,7 @@ mod tests {
 
         // Fill the first row with values 1-9
         for col in 0..9 {
-            board.set_cell(col, (col + 1) as u8).unwrap();
+            board.set_cell(col, (col + 1) as u8);
         }
 
         // All cells in row 0 should be filled
@@ -568,9 +636,10 @@ mod tests {
     fn test_set_value_invalid_index() {
         let mut board = SudokuBoard::new();
 
-        let result = board.set_cell(100, 5);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            board.set_cell(100, 5);
+        }));
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("out of bounds"));
     }
 
     #[test]
@@ -578,14 +647,16 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Value 0 is invalid
-        let result = board.set_cell(0, 0);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("out of range"));
+        let zero_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            board.set_cell(0, 0);
+        }));
+        assert!(zero_result.is_err());
 
         // Value 10 is invalid for Sudoku (max is 9)
-        let result = board.set_cell(0, 10);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("out of range"));
+        let high_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            board.set_cell(0, 10);
+        }));
+        assert!(high_result.is_err());
     }
 
     #[test]
@@ -593,12 +664,19 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
-        board.set_cell(0, 5).unwrap();
+        board.set_cell(0, 5);
 
-        // Try to set cell 1 (same row) to value 5 - should fail
-        let result = board.set_cell(1, 5);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not possible"));
+        // Try to set cell 1 (same row) to value 5 - now allowed but records conflict
+        board.set_cell(1, 5);
+        assert!(board.has_zone_conflict());
+        assert!(
+            board.zone_conflict_count(0) >= 1,
+            "Row 0 should report a conflict"
+        );
+        assert!(
+            board.zone_conflict_count(18) >= 1,
+            "Box 0 should report a conflict"
+        );
     }
 
     #[test]
@@ -606,7 +684,7 @@ mod tests {
         let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
-        board.set_cell(0, 5).unwrap();
+        board.set_cell(0, 5);
         assert_eq!(board.get_cell(0), Some(5));
         assert_eq!(board.given_indices().count(), 1);
 
@@ -659,7 +737,7 @@ mod tests {
         assert_eq!(possible, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
         // Set cell 1 (same row) to value 5
-        board.set_cell(1, 5).unwrap();
+        board.set_cell(1, 5);
 
         // Cell 0 should not have 5 as a possibility
         let possible = board.get_possible_values_for_cell(0);
@@ -676,7 +754,7 @@ mod tests {
 
         // Fill row 0 except cell 0
         for col in 1..9 {
-            board.set_cell(col, col as u8).unwrap();
+            board.set_cell(col, col as u8);
         }
 
         // Cell 0 should now have fewer possibilities
@@ -700,7 +778,7 @@ mod tests {
         ];
 
         for (idx, &val) in solution.iter().enumerate() {
-            board.set_cell(idx, val).unwrap();
+            board.set_cell(idx, val);
         }
 
         let result = board.find_index_with_least_possibilities();
@@ -714,12 +792,12 @@ mod tests {
 
         // Create a contradiction by filling row 0 with 1-8
         for col in 0..8 {
-            board.set_cell(col, (col + 1) as u8).unwrap();
+            board.set_cell(col, (col + 1) as u8);
         }
 
         // Now fill column 8 with values 1-8 (different from row values)
         // This will make cell 8 (row 0, col 8) have no possibilities
-        board.set_cell(17, 9).unwrap(); // Row 1, col 8
+        board.set_cell(17, 9); // Row 1, col 8
 
         // Fill the rest of column 8 to eliminate possibilities for cell 8
         for row in 2..9 {
@@ -727,7 +805,7 @@ mod tests {
             // Skip if value already used in row 0
             let val = if row == 2 { 1 } else { (row - 1) as u8 };
             if board.is_value_possible(idx, val) {
-                board.set_cell(idx, val).unwrap();
+                board.set_cell(idx, val);
             }
         }
 
@@ -782,7 +860,7 @@ mod tests {
     fn test_clone() {
         let mut board = SudokuBoard::new();
 
-        board.set_cell(0, 5).unwrap();
+        board.set_cell(0, 5);
         board.inc_stat("test");
 
         let board2 = board.clone();
@@ -803,7 +881,7 @@ mod tests {
         }
 
         // Set cell 0 (row 0, col 0, box 0) to value 5
-        board.set_cell(0, 5).unwrap();
+        board.set_cell(0, 5);
 
         // Zone 0 (row 0), zone 9 (col 0), and zone 18 (box 0) should each have 8 unfilled cells
         assert_eq!(board.zone_count(0), 8); // Row 0

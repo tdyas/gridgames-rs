@@ -202,9 +202,7 @@ impl SudokuDlxSolver {
             for row_index in solution_rows {
                 let (cell_index, digit) = self.row_assignments[row_index];
                 if solved.get_cell(cell_index).is_none() {
-                    solved
-                        .set_cell(cell_index, digit)
-                        .expect("solver should only emit valid digits");
+                    solved.set_cell(cell_index, digit);
                 }
             }
             solutions.push(solved);
@@ -284,17 +282,21 @@ mod tests {
     #[test]
     fn board_set_value_validates_input() {
         let mut board = SudokuBoard::new();
-        assert!(board.set_cell(10, 5).is_ok());
+        board.set_cell(10, 5);
         assert_eq!(board.get_cell(10), Some(5));
 
         assert!(board.clear_cell(10).is_ok());
         assert_eq!(board.get_cell(10), None);
 
-        let err = board.set_cell(100, 1).unwrap_err();
-        assert!(err.contains("out of bounds"));
+        let out_of_bounds = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            board.set_cell(100, 1);
+        }));
+        assert!(out_of_bounds.is_err());
 
-        let err = board.set_cell(0, 12).unwrap_err();
-        assert!(err.contains("out of range"));
+        let too_high = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            board.set_cell(0, 12);
+        }));
+        assert!(too_high.is_err());
     }
 
     #[test]
