@@ -79,6 +79,16 @@ mod tests {
     }
 
     #[test]
+    fn test_hidden_single_returns_empty_when_conflicted() {
+        let mut board = SudokuBoard::new();
+        board.set_cell(0, 1);
+        board.set_cell(1, 1); // Conflict in row 0 and box 0
+
+        let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
+        assert!(moves.is_empty(), "No moves should be returned on conflict");
+    }
+
+    #[test]
     fn test_hidden_single_in_row() {
         let mut board = SudokuBoard::new();
 

@@ -59,6 +59,16 @@ mod tests {
     }
 
     #[test]
+    fn test_single_possible_returns_empty_when_conflicted() {
+        let mut board = SudokuBoard::new();
+        board.set_cell(0, 1);
+        board.set_cell(1, 1);
+
+        let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
+        assert!(moves.is_empty(), "Conflicted board should not yield moves");
+    }
+
+    #[test]
     fn test_single_possible_finds_naked_single() {
         let mut board = SudokuBoard::new();
 

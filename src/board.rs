@@ -16,6 +16,16 @@ pub trait SolveStrategy<GD: GameDefinition + Default, const CAP: usize> {
     fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove>;
 }
 
+/// Per-zone bookkeeping for conflict detection and progress tracking.
+#[derive(Clone, Debug)]
+struct ZoneInfo {
+    /// Count of unfilled cells in the zone.
+    unfilled_count: usize,
+
+    /// Number of values appearing more than once in the zone.
+    conflict_count: u16,
+}
+
 /// A constraint-propagation board for solving grid-based logic puzzles.
 /// Tracks cell values, possible values, and statistics during solving.
 #[derive(Clone, Debug)]
@@ -32,14 +42,11 @@ pub struct Board<GD: GameDefinition + Default, const CAP: usize> {
     /// Count of each value in every zone (flattened: zone_index * num_values + value_index)
     zone_value_counts: Vec<u16>,
 
-    /// Number of conflicting values (counts >= 2) per zone
-    zone_conflict_counts: Vec<u16>,
+    /// Per-zone counts for unfilled cells and conflicts
+    zone_info: Vec<ZoneInfo>,
 
     /// Total zones currently containing a conflict
     conflicted_zone_total: usize,
-
-    /// Count of unfilled cells per zone
-    zone_counts: Vec<usize>,
 
     /// Number of filled cells
     num_set_cells: usize,
@@ -86,25 +93,27 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         let num_values = gamedef.num_values() as usize;
 
         // Initialize zone counts - each zone starts with all cells unfilled
-        let mut zone_counts = Vec::with_capacity(num_zones);
+        let mut zone_info = Vec::with_capacity(num_zones);
         for zone_index in 0..num_zones {
-            let zone = gamedef
+            let zone_len = gamedef
                 .get_cells_for_zone(zone_index)
-                .expect("invalid zone index?");
-            zone_counts.push(zone.len());
+                .expect("invalid zone index?")
+                .len();
+            zone_info.push(ZoneInfo {
+                unfilled_count: zone_len,
+                conflict_count: 0,
+            });
         }
 
         let zone_value_counts = vec![0u16; num_zones * num_values];
-        let zone_conflict_counts = vec![0u16; num_zones];
 
         Board {
             gamedef: Arc::new(gamedef),
             values: [None; CAP],
             possible: [all_values_mask; CAP],
             zone_value_counts,
-            zone_conflict_counts,
+            zone_info,
             conflicted_zone_total: 0,
-            zone_counts,
             num_set_cells: 0,
             stats: HashMap::new(),
             moves: Vec::new(),
@@ -198,16 +207,17 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
                 .get_zones_for_cell(index)
                 .expect("set_cell failed to get zones for cell")
             {
-                self.zone_counts[zone_index] -= 1;
-
                 let offset = self.zone_value_offset(zone_index, value);
+                let zone = &mut self.zone_info[zone_index];
+                zone.unfilled_count -= 1;
+
                 let previous = self.zone_value_counts[offset];
                 self.zone_value_counts[offset] = previous + 1;
                 if previous == 1 {
-                    if self.zone_conflict_counts[zone_index] == 0 {
+                    if zone.conflict_count == 0 {
                         self.conflicted_zone_total += 1;
                     }
-                    self.zone_conflict_counts[zone_index] += 1;
+                    zone.conflict_count += 1;
                 }
             }
         }
@@ -233,16 +243,17 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
 
             // Update the zone's count of unfilled cells.
             for &zone_index in self.gamedef.get_zones_for_cell(index).unwrap() {
-                self.zone_counts[zone_index] += 1;
-
                 let offset = self.zone_value_offset(zone_index, prev_value.get());
+                let zone = &mut self.zone_info[zone_index];
+                zone.unfilled_count += 1;
+
                 let previous = self.zone_value_counts[offset];
                 debug_assert!(previous > 0, "clearing cell with zero count recorded");
                 self.zone_value_counts[offset] = previous - 1;
 
                 if previous == 2 {
-                    self.zone_conflict_counts[zone_index] -= 1;
-                    if self.zone_conflict_counts[zone_index] == 0 {
+                    zone.conflict_count -= 1;
+                    if zone.conflict_count == 0 {
                         self.conflicted_zone_total -= 1;
                     }
                 }
@@ -455,7 +466,10 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
 
     /// Gets the count of unfilled cells in a specific zone
     pub fn zone_count(&self, zone_index: usize) -> usize {
-        self.zone_counts.get(zone_index).copied().unwrap_or(0)
+        self.zone_info
+            .get(zone_index)
+            .map(|z| z.unfilled_count)
+            .unwrap_or(0)
     }
 
     /// Returns true if any zone currently contains duplicate values.
@@ -470,9 +484,9 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
 
     /// Returns the number of conflicting value entries in a zone (values set twice or more).
     pub fn zone_conflict_count(&self, zone_index: usize) -> u16 {
-        self.zone_conflict_counts
+        self.zone_info
             .get(zone_index)
-            .copied()
+            .map(|z| z.conflict_count)
             .unwrap_or(0)
     }
 
@@ -682,6 +696,30 @@ mod tests {
             board.zone_conflict_count(18) >= 1,
             "Box 0 should report a conflict"
         );
+    }
+
+    #[test]
+    fn test_zone_conflict_detection_and_clearing() {
+        let mut board = SudokuBoard::new();
+
+        board.set_cell(0, 1);
+        board.set_cell(1, 1);
+
+        assert!(board.has_zone_conflict());
+        assert_eq!(board.num_conflicted_zones(), 2); // Row 0 and box 0
+        assert_eq!(board.zone_conflict_count(0), 1);
+        assert_eq!(board.zone_conflict_count(18), 1);
+        assert_eq!(
+            board.find_index_with_least_possibilities(),
+            FindResult::Contradiction
+        );
+
+        board.clear_cell(1).unwrap();
+        assert!(!board.has_zone_conflict());
+        assert_eq!(board.num_conflicted_zones(), 0);
+        assert_eq!(board.zone_conflict_count(0), 0);
+        assert_eq!(board.zone_conflict_count(18), 0);
+        assert!(!board.has_contradiction());
     }
 
     #[test]

@@ -304,6 +304,21 @@ mod tests {
     }
 
     #[test]
+    fn dlx_solver_returns_empty_on_conflict() {
+        let mut solver = SudokuDlxSolver::new();
+        let mut board = SudokuBoard::new();
+
+        board.set_cell(0, 1);
+        board.set_cell(1, 1);
+
+        let solutions = solver.solve(&board);
+        assert!(
+            solutions.is_empty(),
+            "Conflicted board should not yield DLX solutions"
+        );
+    }
+
+    #[test]
     fn dlx_solver_solves_classic_puzzle() {
         let mut solver = SudokuDlxSolver::new();
         let puzzle = "\
