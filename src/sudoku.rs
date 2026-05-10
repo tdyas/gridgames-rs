@@ -181,6 +181,10 @@ impl SudokuDlxSolver {
         board: &SudokuBoard,
         limit: Option<usize>,
     ) -> Vec<SudokuBoard> {
+        if board.has_contradiction() {
+            return Vec::new();
+        }
+
         let max_solutions = limit.unwrap_or(usize::MAX);
         let mut solutions = Vec::new();
 
@@ -282,6 +286,27 @@ mod tests {
     }
 
     #[test]
+    fn board_from_str_allows_conflicts_but_reports_contradiction() {
+        let puzzle =
+            "11...............................................................................";
+
+        let board = SudokuBoard::from_puzzle_str(puzzle).expect("conflicted puzzle still parses");
+
+        assert!(board.has_contradiction());
+        assert_eq!(board.get_cell(0), Some(1));
+        assert_eq!(board.get_cell(1), Some(1));
+    }
+
+    #[test]
+    fn board_from_values_rejects_out_of_range_digits() {
+        let mut values = vec![None; 81];
+        values[0] = Some(12);
+
+        let err = SudokuBoard::from_cell_values(&values).unwrap_err();
+        assert!(err.contains("out of range"));
+    }
+
+    #[test]
     fn board_set_value_validates_input() {
         let mut board = SudokuBoard::new();
         assert!(board.set_cell(10, 5).is_ok());
@@ -295,6 +320,21 @@ mod tests {
 
         let err = board.set_cell(0, 12).unwrap_err();
         assert!(err.contains("out of range"));
+    }
+
+    #[test]
+    fn dlx_solver_returns_empty_on_conflict() {
+        let mut solver = SudokuDlxSolver::new();
+        let mut board = SudokuBoard::new();
+
+        board.set_cell(0, 1).unwrap();
+        board.set_cell(1, 1).unwrap();
+
+        let solutions = solver.solve(&board);
+        assert!(
+            solutions.is_empty(),
+            "Conflicted board should not yield DLX solutions"
+        );
     }
 
     #[test]

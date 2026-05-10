@@ -14,6 +14,10 @@ impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
 {
     /// Finds all values that can only go in one cell within each zone.
     fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove> {
+        if board.has_contradiction() {
+            return Vec::new();
+        }
+
         let mut moves = Vec::new();
         let mut seen_moves = HashSet::new();
 
@@ -72,6 +76,16 @@ mod tests {
         let board = SudokuBoard::new();
         let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
         assert_eq!(moves.len(), 0);
+    }
+
+    #[test]
+    fn test_hidden_single_returns_empty_when_conflicted() {
+        let mut board = SudokuBoard::new();
+        board.set_cell(0, 1).unwrap();
+        board.set_cell(1, 1).unwrap(); // Conflict in row 0 and box 0
+
+        let moves = HiddenSingleSolveStrategy::compute_solver_moves(&board);
+        assert!(moves.is_empty(), "No moves should be returned on conflict");
     }
 
     #[test]

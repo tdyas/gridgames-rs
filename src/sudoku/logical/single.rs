@@ -14,6 +14,10 @@ impl<GD: GameDefinition + Default, const CAP: usize> SolveStrategy<GD, CAP>
 {
     /// Finds all cells that have exactly one possible value.
     fn compute_solver_moves(board: &Board<GD, CAP>) -> Vec<SolverMove> {
+        if board.has_contradiction() {
+            return Vec::new();
+        }
+
         let mut moves = Vec::new();
 
         for index in 0..board.num_cells() {
@@ -52,6 +56,16 @@ mod tests {
         let board = SudokuBoard::new();
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
         assert_eq!(moves.len(), 0);
+    }
+
+    #[test]
+    fn test_single_possible_returns_empty_when_conflicted() {
+        let mut board = SudokuBoard::new();
+        board.set_cell(0, 1).unwrap();
+        board.set_cell(1, 1).unwrap();
+
+        let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
+        assert!(moves.is_empty(), "Conflicted board should not yield moves");
     }
 
     #[test]
