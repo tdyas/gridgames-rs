@@ -206,7 +206,9 @@ impl SudokuDlxSolver {
             for row_index in solution_rows {
                 let (cell_index, digit) = self.row_assignments[row_index];
                 if solved.get_cell(cell_index).is_none() {
-                    solved.set_cell(cell_index, digit);
+                    solved
+                        .set_cell(cell_index, digit)
+                        .expect("solver should only emit valid digits");
                 }
             }
             solutions.push(solved);
@@ -284,23 +286,39 @@ mod tests {
     }
 
     #[test]
+    fn board_from_str_allows_conflicts_but_reports_contradiction() {
+        let puzzle = "11...............................................................................";
+
+        let board = SudokuBoard::from_puzzle_str(puzzle).expect("conflicted puzzle still parses");
+
+        assert!(board.has_contradiction());
+        assert_eq!(board.get_cell(0), Some(1));
+        assert_eq!(board.get_cell(1), Some(1));
+    }
+
+    #[test]
+    fn board_from_values_rejects_out_of_range_digits() {
+        let mut values = vec![None; 81];
+        values[0] = Some(12);
+
+        let err = SudokuBoard::from_cell_values(&values).unwrap_err();
+        assert!(err.contains("out of range"));
+    }
+
+    #[test]
     fn board_set_value_validates_input() {
         let mut board = SudokuBoard::new();
-        board.set_cell(10, 5);
+        assert!(board.set_cell(10, 5).is_ok());
         assert_eq!(board.get_cell(10), Some(5));
 
         assert!(board.clear_cell(10).is_ok());
         assert_eq!(board.get_cell(10), None);
 
-        let out_of_bounds = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            board.set_cell(100, 1);
-        }));
-        assert!(out_of_bounds.is_err());
+        let err = board.set_cell(100, 1).unwrap_err();
+        assert!(err.contains("out of bounds"));
 
-        let too_high = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            board.set_cell(0, 12);
-        }));
-        assert!(too_high.is_err());
+        let err = board.set_cell(0, 12).unwrap_err();
+        assert!(err.contains("out of range"));
     }
 
     #[test]
@@ -308,8 +326,8 @@ mod tests {
         let mut solver = SudokuDlxSolver::new();
         let mut board = SudokuBoard::new();
 
-        board.set_cell(0, 1);
-        board.set_cell(1, 1);
+        board.set_cell(0, 1).unwrap();
+        board.set_cell(1, 1).unwrap();
 
         let solutions = solver.solve(&board);
         assert!(

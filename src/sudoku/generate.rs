@@ -39,7 +39,9 @@ pub fn generate_solved_sudoku_board<R: Rng>(
         // Try placing each possible value in the cell until there is at least one valid solution.
         let mut placed_value = false;
         for possible_value_for_cell in possible_values_for_cell {
-            board.set_cell(index, possible_value_for_cell);
+            board
+                .set_cell(index, possible_value_for_cell)
+                .expect("value was already known to be possible");
 
             let solutions = solver.solve_with_limit(&board, Some(2));
             if !solutions.is_empty() {
@@ -116,7 +118,9 @@ pub fn remove_given_values_from_board<R: Rng>(
             log::debug!(
                 "Removal failed due to no unique solution existing. (Duration: {uniqueness_check_duration:?})"
             );
-            board.set_cell(index, prior_value);
+            board
+                .set_cell(index, prior_value)
+                .expect("restoring original value");
         }
     }
 

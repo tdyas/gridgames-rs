@@ -61,8 +61,8 @@ mod tests {
     #[test]
     fn test_single_possible_returns_empty_when_conflicted() {
         let mut board = SudokuBoard::new();
-        board.set_cell(0, 1);
-        board.set_cell(1, 1);
+        board.set_cell(0, 1).unwrap();
+        board.set_cell(1, 1).unwrap();
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);
         assert!(moves.is_empty(), "Conflicted board should not yield moves");
@@ -74,7 +74,7 @@ mod tests {
 
         // Fill row 0 except cell 0, leaving only one possibility (9) for cell 0.
         for col in 1..9 {
-            board.set_cell(col, col as u8);
+            board.set_cell(col, col as u8).unwrap();
         }
 
         let moves = SinglePossibleSolveStrategy::compute_solver_moves(&board);

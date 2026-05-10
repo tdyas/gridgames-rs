@@ -110,6 +110,9 @@ fn sudoku_solve(args: SudokuSolveArgs) -> Result<(), String> {
     } = args;
 
     let board = SudokuBoard::from_puzzle_str(&puzzle)?;
+    if board.has_contradiction() {
+        return Err("The provided puzzle contains contradictions.".to_string());
+    }
     let mut solver = SudokuDlxSolver::new();
 
     let limit = max_solutions
@@ -152,9 +155,11 @@ fn sudoku_generate(args: SudokuGenerateArgs) -> Result<(), String> {
     } = args;
 
     let solved_board = if let Some(solved_board) = solved_board {
-        // from_puzzle_str will fail if the caller provides an impossible board.
         let maybe_solved_board = SudokuBoard::from_puzzle_str(&solved_board)
             .map_err(|err| format!("Error while converting provided solved board: {err:?}"))?;
+        if maybe_solved_board.has_contradiction() {
+            return Err("The provided solved board contains contradictions.".to_string());
+        }
         if maybe_solved_board
             .get_all_cell_values()
             .iter()
