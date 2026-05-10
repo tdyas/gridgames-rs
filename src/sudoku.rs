@@ -287,7 +287,8 @@ mod tests {
 
     #[test]
     fn board_from_str_allows_conflicts_but_reports_contradiction() {
-        let puzzle = "11...............................................................................";
+        let puzzle =
+            "11...............................................................................";
 
         let board = SudokuBoard::from_puzzle_str(puzzle).expect("conflicted puzzle still parses");
 
