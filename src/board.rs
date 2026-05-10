@@ -476,7 +476,7 @@ impl<GD: GameDefinition + Default, const CAP: usize> Board<GD, CAP> {
         self.conflicted_zone_total
     }
 
-    /// Returns the number of conflicting value entries in a zone (values set twice or more).
+    /// Returns how many distinct values appear more than once in the zone.
     pub fn zone_conflict_count(&self, zone_index: usize) -> u16 {
         self.zone_info
             .get(zone_index)
