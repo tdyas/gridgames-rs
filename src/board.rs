@@ -670,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn test_set_value_impossible() {
+    fn test_set_value_records_zone_conflict() {
         let mut board = SudokuBoard::new();
 
         // Set cell 0 to value 5
